@@ -13,6 +13,7 @@ export default function DiagnosisFunnelTracker() {
     if (pathname !== DIAGNOSIS_PATH) return;
 
     let currentDiagnosisId: string | null = null;
+    let currentLeadId: string | null = null;
 
     resetFunnelSession();
     void trackFunnelEvent('diagnosis_started', {
@@ -31,20 +32,49 @@ export default function DiagnosisFunnelTracker() {
       });
     };
 
-    const handleResetClick = (event: MouseEvent) => {
+    const handleDocumentClick = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
 
       const button = target.closest('button');
-      if (!button?.textContent?.includes('Mulai Diagnosis Baru')) return;
+      const link = target.closest('a');
 
-      currentDiagnosisId = null;
-      resetFunnelSession();
-      window.setTimeout(() => {
-        void trackFunnelEvent('diagnosis_started', {
-          metadata: { path: DIAGNOSIS_PATH, restarted: true },
+      if (button?.textContent?.includes('Mulai Diagnosis Baru')) {
+        currentDiagnosisId = null;
+        currentLeadId = null;
+        resetFunnelSession();
+        window.setTimeout(() => {
+          void trackFunnelEvent('diagnosis_started', {
+            metadata: { path: DIAGNOSIS_PATH, restarted: true },
+          });
+        }, 0);
+        return;
+      }
+
+      if (
+        currentDiagnosisId &&
+        button?.textContent?.includes('Download Executive Report PDF')
+      ) {
+        void trackFunnelEvent('report_downloaded', {
+          diagnosisId: currentDiagnosisId,
+          leadId: currentLeadId,
+          metadata: { format: 'pdf' },
         });
-      }, 0);
+        return;
+      }
+
+      if (
+        currentDiagnosisId &&
+        link &&
+        (link.href.startsWith('https://wa.me/') ||
+          link.textContent?.includes('Request Assessment via WhatsApp'))
+      ) {
+        void trackFunnelEvent('assessment_clicked', {
+          diagnosisId: currentDiagnosisId,
+          leadId: currentLeadId,
+          metadata: { channel: 'whatsapp' },
+        });
+      }
     };
 
     const detectViewedSteps = () => {
@@ -93,6 +123,7 @@ export default function DiagnosisFunnelTracker() {
             if (!payload?.diagnosis_id) return;
 
             currentDiagnosisId = payload.diagnosis_id;
+            currentLeadId = null;
 
             return trackFunnelEvent('diagnosis_completed', {
               diagnosisId: payload.diagnosis_id,
@@ -105,6 +136,22 @@ export default function DiagnosisFunnelTracker() {
           .catch(() => undefined);
       }
 
+      if (method === 'POST' && url.includes('/api/v1/leads') && response.ok) {
+        void response.clone().json()
+          .then((payload) => {
+            if (!payload?.success || !payload?.lead_id || !currentDiagnosisId) return;
+
+            currentLeadId = payload.lead_id;
+
+            return trackFunnelEvent('lead_captured', {
+              diagnosisId: currentDiagnosisId,
+              leadId: payload.lead_id,
+              metadata: { source: 'step_8' },
+            });
+          })
+          .catch(() => undefined);
+      }
+
       return response;
     };
 
@@ -112,13 +159,13 @@ export default function DiagnosisFunnelTracker() {
 
     window.fetch = wrappedFetch;
     document.addEventListener('change', handleModelChange);
-    document.addEventListener('click', handleResetClick);
+    document.addEventListener('click', handleDocumentClick);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       observer.disconnect();
       document.removeEventListener('change', handleModelChange);
-      document.removeEventListener('click', handleResetClick);
+      document.removeEventListener('click', handleDocumentClick);
       if (window.fetch === wrappedFetch) window.fetch = originalFetch;
     };
   }, [pathname]);
