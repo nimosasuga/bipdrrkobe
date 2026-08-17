@@ -146,6 +146,10 @@ export default function DiagnosisFormPage() {
   const [roiShift, setRoiShift] = useState(2);
   const [companyName, setCompanyName] = useState('');
   const [siteName, setSiteName] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userWhatsapp, setUserWhatsapp] = useState('');
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [leadSaving, setLeadSaving] = useState(false);
   const [financialMode, setFinancialMode] = useState<FinancialMode>('unknown');
   const [downtimeCostPerHour, setDowntimeCostPerHour] = useState(0);
   const [maintenanceCostPerUnitMonth, setMaintenanceCostPerUnitMonth] = useState(0);
@@ -374,11 +378,54 @@ export default function DiagnosisFormPage() {
       setAi(null);
       setDiagnosis(payload);
       setDiagnosisId(payload.diagnosis_id);
+      setLeadId(null);
       setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Diagnosis gagal diproses.');
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function saveLeadAndContinue() {
+    if (!diagnosisId) return;
+
+    setError('');
+
+    if (!companyName.trim() || !siteName.trim() || !userName.trim() || !userWhatsapp.trim()) {
+      setError('Lengkapi PT, lokasi, nama user, dan nomor WhatsApp sebelum melihat rekomendasi final.');
+      return;
+    }
+
+    setLeadSaving(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/leads`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          diagnosis_id: diagnosisId,
+          perusahaan: companyName.trim(),
+          lokasi: siteName.trim(),
+          nama: userName.trim(),
+          whatsapp: userWhatsapp.trim(),
+          jumlah_forklift: jumlahForklift,
+          source: 'bip',
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message ?? 'Data assessment gagal disimpan.');
+      }
+
+      setLeadId(payload.lead_id ?? null);
+      setStep(9);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Data assessment gagal disimpan.');
+    } finally {
+      setLeadSaving(false);
     }
   }
 
@@ -398,6 +445,10 @@ export default function DiagnosisFormPage() {
     setAi(null);
     setCompanyName('');
     setSiteName('');
+    setUserName('');
+    setUserWhatsapp('');
+    setLeadId(null);
+    setLeadSaving(false);
     setFinancialMode('unknown');
     setDowntimeCostPerHour(0);
     setMaintenanceCostPerUnitMonth(0);
@@ -444,7 +495,13 @@ export default function DiagnosisFormPage() {
     'Halo tim DRRKOBE,',
     '',
     'Saya sudah menyelesaikan diagnosis di DRRKOBE Battery Intelligence Platform dan ingin mengajukan pemeriksaan teknis.',
-    ...(companyName || siteName ? ['', '*DATA PERUSAHAAN*', `Perusahaan: ${companyName || '-'}`, `Lokasi/site: ${siteName || '-'}`] : []),
+    '',
+    '*DATA KONTAK*',
+    `Perusahaan: ${companyName || '-'}`,
+    `Lokasi/site: ${siteName || '-'}`,
+    `Nama: ${userName || '-'}`,
+    `WhatsApp: ${userWhatsapp || '-'}`,
+    ...(leadId ? [`Lead ID: ${leadId}`] : []),
     '',
     '*DATA UNIT*',
     `Brand: ${selectedBrand?.name || '-'}`,
@@ -681,10 +738,16 @@ export default function DiagnosisFormPage() {
             </div>
 
             <Panel className="mt-6">
-              <Mono>EXECUTIVE REPORT — DATA PERUSAHAAN</Mono>
-              <h3 className="mt-3 text-xl font-black">Identitas assessment</h3>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Nama perusahaan dan lokasi digunakan untuk personalisasi Executive Report. Keduanya tetap opsional.</p>
-              <div className="mt-5 grid gap-4 md:grid-cols-2"><ReportField label="Nama perusahaan"><input className="drr-input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Contoh: PT ABC Indonesia" /></ReportField><ReportField label="Lokasi / site"><input className="drr-input" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="Contoh: Plant Cikarang" /></ReportField></div>
+              <Mono>DATA ASSESSMENT — WAJIB</Mono>
+              <h3 className="mt-3 text-xl font-black">Lengkapi data sebelum rekomendasi final</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Empat data berikut wajib diisi agar hasil assessment dapat ditindaklanjuti dan dicatat sebagai lead DRRKOBE.</p>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <ReportField label="PT / Nama Perusahaan *"><input className="drr-input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Contoh: PT ABC Indonesia" autoComplete="organization" /></ReportField>
+                <ReportField label="Lokasi / Site *"><input className="drr-input" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="Contoh: Plant Cikarang" /></ReportField>
+                <ReportField label="Nama User *"><input className="drr-input" value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="Nama PIC / pengguna" autoComplete="name" /></ReportField>
+                <ReportField label="Nomor WhatsApp *"><input className="drr-input" type="tel" inputMode="tel" value={userWhatsapp} onChange={(e) => setUserWhatsapp(e.target.value)} placeholder="Contoh: 081234567890" autoComplete="tel" /></ReportField>
+              </div>
+              <div className="mt-5 rounded-xl border border-[#FFCC00]/50 bg-[#FFFEF0] px-4 py-3 text-xs leading-5 text-zinc-700">Data disimpan sebelum Step 9 agar permintaan assessment tetap tercatat meskipun pesan WhatsApp belum dikirim.</div>
             </Panel>
 
             <Panel className="mt-6">
@@ -720,7 +783,7 @@ export default function DiagnosisFormPage() {
               <p className="mt-5 text-xs leading-5 text-zinc-500">Harga pembelian battery tidak dimasukkan pada tahap diagnosis. Commercial payback dihitung setelah technical assessment dan commercial proposal tervalidasi.</p>
             </Panel>
 
-            <Nav onBack={() => setStep(7)} onNext={() => setStep(9)} nextLabel="Lihat Rekomendasi Final" />
+            <Nav error={error} onBack={() => setStep(7)} onNext={() => void saveLeadAndContinue()} nextLabel={leadSaving ? 'Menyimpan data assessment...' : 'Simpan & Lihat Rekomendasi Final'} disabled={leadSaving} />
           </StepFrame>
         )}
 
@@ -728,7 +791,7 @@ export default function DiagnosisFormPage() {
           <StepFrame eyebrow="STEP 9 / 9 — RECOMMENDATION" title="Rekomendasi DRRKOBE">
             <div className="grid gap-6 lg:grid-cols-[.9fr_1.3fr]">
               <div><Panel><span className="inline-flex rounded-full bg-red-500 px-3 py-1 text-xs font-black text-white">{health <= 65 ? 'PEMERIKSAAN TEKNIS DIPRIORITASKAN' : 'PEMANTAUAN & VERIFIKASI'} — {selectedIssues.length} MASALAH TERINDIKASI</span><h3 className="mt-5 text-xl font-black">{selectedModel?.model_code || selectedModel?.name} • Kondisi Lead Acid {health}% • Urgensi {urgency}</h3><p className="mt-4 text-sm leading-6 text-zinc-600">Diagnosis membaca {selectedIssues.length} masalah yang saling berkaitan pada pola operasi {shift} shift / {jamOperasi} jam per hari. Rekomendasi akhir tetap membutuhkan validasi kondisi aktual sebelum keputusan perubahan teknologi.</p><div className="mt-6 grid grid-cols-3 gap-3"><Metric label="Keyakinan" value={`${confidence}%`} /><Metric label="Masalah" value={`${selectedIssues.length}`} dark /><Metric label="Evaluasi" value="Li-ion" /></div></Panel><div className="mt-4 rounded-[18px] bg-[#0A0A0A] p-5 text-sm text-white"><b className="text-[#FFCC00]">Pemeriksaan berikutnya:</b> {ai?.recommended_actions?.[0] || 'Jadwalkan pemeriksaan battery di lokasi untuk memeriksa kapasitas aktual, charger, kondisi cell, dan pola operasi.'}</div></div>
-              <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white"><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div><h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan pemeriksaan teknis.</p><div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left"><Mono className="text-zinc-400">RINGKASAN DIAGNOSIS • DRRKOBE.COM/BIP</Mono><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}%`} dark /><KeyValue label="Masalah" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgensi" value={urgency} dark /></div></div><div className="mt-7 flex flex-wrap justify-center gap-3"><button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button><a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a><button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button></div><p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Nominal finansial hanya digunakan bila Anda benar-benar mengisinya.</p></div>
+              <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white"><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div><h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Data assessment sudah tercatat. Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan pemeriksaan teknis.</p><div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left"><Mono className="text-zinc-400">RINGKASAN DIAGNOSIS • DRRKOBE.COM/BIP</Mono><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}%`} dark /><KeyValue label="Masalah" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgensi" value={urgency} dark /></div></div><div className="mt-7 flex flex-wrap justify-center gap-3"><button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button><a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a><button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button></div><p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Nominal finansial hanya digunakan bila Anda benar-benar mengisinya.</p></div>
             </div>
           </StepFrame>
         )}
