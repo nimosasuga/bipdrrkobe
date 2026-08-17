@@ -6,7 +6,7 @@ Tujuan workflow ini adalah menyalin lead yang sudah lebih dulu tersimpan di Post
 
 Gunakan alur sederhana:
 
-Webhook (POST) → Google Sheets (Append Row) → Respond to Webhook
+Webhook (POST) → Google Sheets (Append or Update Row) → Respond to Webhook
 
 Webhook path yang disarankan:
 
@@ -46,7 +46,9 @@ Empat data berikut wajib berasal dari user sebelum masuk Step 9:
 
 ## Mapping Google Sheets node
 
-Operation: Append Row
+Operation: **Append or Update Row**.
+
+Gunakan `lead_id` sebagai kolom pencocokan agar request ulang untuk diagnosis yang sama tidak membuat baris duplikat.
 
 Map dari input webhook:
 
@@ -82,4 +84,5 @@ Body JSON:
 - Jangan menyimpan token Google atau credential n8n di GitHub.
 - Jangan membuat Google Sheets sebagai sumber utama lead.
 - Lead harus berhasil tersimpan di PostgreSQL lebih dulu.
+- Gunakan `lead_id` sebagai key unik di Google Sheets agar sinkronisasi idempotent.
 - Bila Google Sheets gagal, backend menandai `spreadsheet_sync_status=failed`; user tetap dapat melanjutkan diagnosis.
