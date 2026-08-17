@@ -24,6 +24,11 @@ class Lead extends Model
         'jam_operasional',
         'health_score',
         'lead_score',
+        'qualification_status',
+        'qualification_version',
+        'qualification_reason',
+        'qualified_at',
+        'qualification_error',
         'ai_summary',
         'session_id',
         'status',
@@ -39,6 +44,7 @@ class Lead extends Model
             'jumlah_forklift' => 'integer',
             'jam_operasional' => 'integer',
             'health_score' => 'integer',
+            'qualified_at' => 'datetime',
             'spreadsheet_synced_at' => 'datetime',
         ];
     }
