@@ -14,6 +14,7 @@ export default function DiagnosisFunnelTracker() {
 
     let currentDiagnosisId: string | null = null;
 
+    resetFunnelSession();
     void trackFunnelEvent('diagnosis_started', {
       metadata: { path: DIAGNOSIS_PATH },
     });
