@@ -70,6 +70,11 @@ const GREEN: [number, number, number] = [34, 197, 94];
 
 const INTERNAL_LANGUAGE = /(laravel|docker|compose|php artisan|\/home\/|n8n|webhook|postgres|redis|json|api\/v\d|controller|migration|npm\s|git\s|composer|openai|qwen|claude|prompt|database field|database column)/i;
 
+type FittedText = {
+  lines: string[];
+  fontSize: number;
+};
+
 function rupiah(value: number): string {
   return `Rp ${Math.round(value).toLocaleString('id-ID')}`;
 }
@@ -149,6 +154,61 @@ function conditionColor(score: number): [number, number, number] {
   return GREEN;
 }
 
+function fitTextBlock(
+  doc: jsPDF,
+  text: string,
+  width: number,
+  startFontSize: number,
+  maxLines: number,
+  minFontSize = 6,
+): FittedText {
+  const clean = text.trim() || '-';
+  let fontSize = startFontSize;
+  let lines: string[] = [];
+
+  while (fontSize >= minFontSize) {
+    doc.setFontSize(fontSize);
+    lines = doc.splitTextToSize(clean, width) as string[];
+    if (lines.length <= maxLines) return { lines, fontSize };
+    fontSize -= 0.5;
+  }
+
+  doc.setFontSize(minFontSize);
+  lines = doc.splitTextToSize(clean, width) as string[];
+
+  if (lines.length > maxLines) {
+    const visible = lines.slice(0, maxLines);
+    let last = visible[maxLines - 1] || '';
+    while (last.length > 3 && doc.getTextWidth(`${last}…`) > width) {
+      last = last.slice(0, -1);
+    }
+    visible[maxLines - 1] = `${last.trim()}…`;
+    lines = visible;
+  }
+
+  return { lines, fontSize: minFontSize };
+}
+
+function drawFittedBlock(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  startFontSize: number,
+  maxLines: number,
+  minFontSize: number,
+  color: [number, number, number],
+  lineHeight: number,
+  align: 'left' | 'right' | 'center' = 'left',
+): number {
+  const fitted = fitTextBlock(doc, text, width, startFontSize, maxLines, minFontSize);
+  doc.setFontSize(fitted.fontSize);
+  doc.setTextColor(...color);
+  doc.text(fitted.lines, x, y, { align });
+  return y + Math.max(1, fitted.lines.length) * lineHeight;
+}
+
 function pageBase(doc: jsPDF, page: number, section: string) {
   doc.setFillColor(...PAPER);
   doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
@@ -188,21 +248,24 @@ function sectionTitle(doc: jsPDF, kicker: string, heading: string, subheading?: 
   doc.setTextColor(...GREY);
   doc.text(kicker.toUpperCase(), MARGIN, y);
 
-  doc.setFontSize(21);
+  doc.setFont('helvetica', 'bold');
+  const headingFit = fitTextBlock(doc, heading, CONTENT_W, 21, 2, 16);
+  doc.setFontSize(headingFit.fontSize);
   doc.setTextColor(...BLACK);
-  doc.text(heading, MARGIN, y + 10);
+  doc.text(headingFit.lines, MARGIN, y + 10);
 
+  const headingBottom = y + 10 + (headingFit.lines.length - 1) * 8.5;
   doc.setFillColor(...YELLOW);
-  doc.rect(MARGIN, y + 14, 44, 2.2, 'F');
+  doc.rect(MARGIN, headingBottom + 4, 44, 2.2, 'F');
 
-  if (!subheading) return y + 24;
+  if (!subheading) return headingBottom + 14;
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
+  const subFit = fitTextBlock(doc, subheading, CONTENT_W, 8.5, 3, 7.4);
+  doc.setFontSize(subFit.fontSize);
   doc.setTextColor(...GREY);
-  const lines = doc.splitTextToSize(subheading, CONTENT_W) as string[];
-  doc.text(lines, MARGIN, y + 23);
-  return y + 23 + Math.max(1, lines.length) * 4.5 + 5;
+  doc.text(subFit.lines, MARGIN, headingBottom + 13);
+  return headingBottom + 13 + Math.max(1, subFit.lines.length) * 4.5 + 5;
 }
 
 function paragraph(
@@ -229,11 +292,8 @@ function labelValue(doc: jsPDF, label: string, value: string, x: number, y: numb
   doc.setTextColor(...MID_GREY);
   doc.text(label.toUpperCase(), x, y);
 
-  doc.setFontSize(9.5);
-  doc.setTextColor(...BLACK);
-  const lines = doc.splitTextToSize(value, width) as string[];
-  doc.text(lines, x, y + 5);
-  return y + 5 + Math.max(1, lines.length) * 4.5;
+  doc.setFont('helvetica', 'bold');
+  return drawFittedBlock(doc, value, x, y + 5, width, 9.5, 2, 7.3, BLACK, 4.2);
 }
 
 function metricCard(
@@ -246,55 +306,74 @@ function metricCard(
   note: string,
   dark = false,
 ) {
+  const height = 38;
   doc.setFillColor(...(dark ? BLACK : WHITE));
   doc.setDrawColor(...(dark ? BLACK : LIGHT));
-  doc.roundedRect(x, y, width, 34, 3.5, 3.5, 'FD');
+  doc.roundedRect(x, y, width, height, 3.5, 3.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.2);
+  const labelFit = fitTextBlock(doc, label.toUpperCase(), width - 10, 6.2, 2, 5.2);
+  doc.setFontSize(labelFit.fontSize);
   doc.setTextColor(...(dark ? MID_GREY : GREY));
-  doc.text(label.toUpperCase(), x + 5, y + 8);
+  doc.text(labelFit.lines, x + 5, y + 7.5);
 
-  doc.setFontSize(14.5);
+  doc.setFont('helvetica', 'bold');
+  const valueFit = fitTextBlock(doc, value, width - 10, 14.5, 2, 7.8);
+  doc.setFontSize(valueFit.fontSize);
   doc.setTextColor(...(dark ? WHITE : BLACK));
-  doc.text(value, x + 5, y + 19);
+  doc.text(valueFit.lines, x + 5, y + 19);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.3);
+  const noteFit = fitTextBlock(doc, note, width - 10, 6.2, 2, 5.2);
+  doc.setFontSize(noteFit.fontSize);
   doc.setTextColor(...(dark ? MID_GREY : GREY));
-  const lines = doc.splitTextToSize(note, width - 10) as string[];
-  doc.text(lines.slice(0, 2), x + 5, y + 26);
+  doc.text(noteFit.lines, x + 5, y + 30);
 }
 
 function quoteCard(doc: jsPDF, text: string, y: number, dark = true): number {
   const fill = dark ? BLACK : WHITE;
   const textColor = dark ? WHITE : BLACK;
-  const lines = doc.splitTextToSize(text, CONTENT_W - 22) as string[];
-  const height = Math.max(34, 18 + lines.length * 5.2);
+  const fit = fitTextBlock(doc, text, CONTENT_W - 24, 9.6, 6, 7.8);
+  const lineHeight = fit.fontSize >= 9 ? 5.0 : 4.5;
+  const height = Math.max(34, 17 + fit.lines.length * lineHeight);
 
   doc.setFillColor(...fill);
   doc.setDrawColor(...(dark ? BLACK : LIGHT));
   doc.roundedRect(MARGIN, y, CONTENT_W, height, 4, 4, 'FD');
 
   doc.setFillColor(...YELLOW);
-  doc.roundedRect(MARGIN + 7, y + 8, 4, 14, 1.5, 1.5, 'F');
+  doc.roundedRect(MARGIN + 7, y + 8, 4, Math.min(14, height - 16), 1.5, 1.5, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(fit.fontSize);
   doc.setTextColor(...textColor);
-  doc.text(lines, MARGIN + 17, y + 12);
+  doc.text(fit.lines, MARGIN + 17, y + 12);
   return y + height;
 }
 
-function bulletList(doc: jsPDF, items: string[], x: number, y: number, width: number, maxItems = 7): number {
+function bulletList(
+  doc: jsPDF,
+  items: string[],
+  x: number,
+  y: number,
+  width: number,
+  maxItems = 7,
+  fontSize = 8.2,
+  lineHeight = 4.2,
+): number {
   const list = items.map(cleanClientText).filter(Boolean).slice(0, maxItems);
-  if (!list.length) return paragraph(doc, 'Belum ada catatan tambahan yang perlu ditampilkan.', x, y, width, 8.5, GREY);
+  if (!list.length) return paragraph(doc, 'Belum ada catatan tambahan yang perlu ditampilkan.', x, y, width, 8.3, GREY);
 
   let cursor = y;
   for (const item of list) {
     doc.setFillColor(...YELLOW);
-    doc.circle(x + 1.5, cursor - 1.4, 1.2, 'F');
-    cursor = paragraph(doc, item, x + 6, cursor, width - 6, 8.4, BLACK, 4.4) + 1.7;
+    doc.circle(x + 1.5, cursor - 1.3, 1.1, 'F');
+    doc.setFont('helvetica', 'normal');
+    const fit = fitTextBlock(doc, item, width - 6, fontSize, 4, 6.8);
+    doc.setFontSize(fit.fontSize);
+    doc.setTextColor(...BLACK);
+    doc.text(fit.lines, x + 6, cursor);
+    cursor += Math.max(1, fit.lines.length) * lineHeight + 1.7;
   }
   return cursor;
 }
@@ -319,19 +398,31 @@ function drawGauge(doc: jsPDF, x: number, y: number, score: number) {
 
 function drawBar(doc: jsPDF, x: number, y: number, width: number, label: string, value: number, note?: string): number {
   const clamped = Math.max(0, Math.min(100, value));
+  const cleanedLabel = cleanClientText(label) || 'Perlu verifikasi';
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.4);
+  const labelFit = fitTextBlock(doc, cleanedLabel, width - 18, 8.4, 2, 7.0);
+  doc.setFontSize(labelFit.fontSize);
   doc.setTextColor(...BLACK);
-  doc.text(cleanClientText(label), x, y);
+  doc.text(labelFit.lines, x, y);
+  doc.setFontSize(8.2);
   doc.text(`${clamped}%`, x + width, y, { align: 'right' });
 
+  const labelHeight = Math.max(1, labelFit.lines.length) * 4.2;
+  const barY = y + labelHeight + 1.5;
   doc.setFillColor(240, 240, 241);
-  doc.roundedRect(x, y + 3, width, 3.4, 1.7, 1.7, 'F');
+  doc.roundedRect(x, barY, width, 3.4, 1.7, 1.7, 'F');
   doc.setFillColor(...YELLOW);
-  doc.roundedRect(x, y + 3, Math.max(2, (width * clamped) / 100), 3.4, 1.7, 1.7, 'F');
+  doc.roundedRect(x, barY, Math.max(2, (width * clamped) / 100), 3.4, 1.7, 1.7, 'F');
 
-  if (!note) return y + 13;
-  return paragraph(doc, cleanClientText(note), x, y + 11, width, 7.3, GREY, 4.1) + 2;
+  if (!note) return barY + 11;
+
+  doc.setFont('helvetica', 'normal');
+  const noteFit = fitTextBlock(doc, cleanClientText(note), width, 7.3, 3, 6.4);
+  doc.setFontSize(noteFit.fontSize);
+  doc.setTextColor(...GREY);
+  doc.text(noteFit.lines, x, barY + 10);
+  return barY + 10 + Math.max(1, noteFit.lines.length) * 4 + 3;
 }
 
 function executiveNarrative(data: AssessmentReportData): string {
@@ -372,6 +463,23 @@ function decisionStatement(data: AssessmentReportData): string {
   return 'Belum ada alasan untuk mengambil keputusan teknologi secara terburu-buru. Pertahankan pemantauan dan lakukan pemeriksaan teknis bila gejala meningkat atau jam operasi bertambah.';
 }
 
+function drawFooterDisclaimer(doc: jsPDF, diagnosisId: string) {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.8);
+  doc.setTextColor(...GREY);
+  doc.text('Nomor penilaian:', MARGIN, 274);
+  doc.setFont('helvetica', 'bold');
+  const idFit = fitTextBlock(doc, diagnosisId, 74, 5.8, 2, 4.8);
+  doc.setFontSize(idFit.fontSize);
+  doc.text(idFit.lines, MARGIN + 21, 274);
+
+  doc.setFont('helvetica', 'normal');
+  const disclaimer = 'Dokumen ini bukan sertifikat kepatuhan atau sertifikasi ISO dan tidak menggantikan inspeksi teknis lapangan.';
+  const disclaimerFit = fitTextBlock(doc, disclaimer, 82, 5.8, 2, 5.0);
+  doc.setFontSize(disclaimerFit.fontSize);
+  doc.text(disclaimerFit.lines, PAGE_W - MARGIN, 272, { align: 'right' });
+}
+
 export function downloadAssessmentPdf(data: AssessmentReportData) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
 
@@ -386,8 +494,8 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   ) * 12;
   const monetaryInputsAvailable = annualOperatingCost > 0;
   const reportDate = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
-  const safeFindings = clientList(data.technicalFindings, 5);
-  const safeActions = clientList(data.recommendedActions, 4);
+  const safeFindings = clientList(data.technicalFindings, 4);
+  const safeActions = clientList(data.recommendedActions, 2);
   const safeCauses = data.causes
     .map((cause) => ({ ...cause, name: cleanClientText(cause.name), reason: cleanClientText(cause.reason) }))
     .filter((cause) => cause.name && !INTERNAL_LANGUAGE.test(cause.name))
@@ -412,13 +520,36 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
 
   doc.setFontSize(8);
   doc.setTextColor(...MID_GREY);
-  doc.text('Disiapkan untuk', MARGIN + 9, 85);
-  doc.setFontSize(13);
-  doc.setTextColor(...WHITE);
-  doc.text(safe(data.companyName, 'Nama perusahaan belum diisi'), MARGIN + 9, 94);
-  doc.setFontSize(7.4);
-  doc.setTextColor(...MID_GREY);
-  doc.text(`${safe(data.siteName, 'Lokasi belum diisi')} • ${reportDate}`, PAGE_W - MARGIN - 9, 94, { align: 'right' });
+  doc.text('Disiapkan untuk', MARGIN + 9, 84);
+
+  doc.setFont('helvetica', 'bold');
+  drawFittedBlock(
+    doc,
+    safe(data.companyName, 'Nama perusahaan belum diisi'),
+    MARGIN + 9,
+    92,
+    92,
+    13,
+    2,
+    8.5,
+    WHITE,
+    5,
+  );
+
+  doc.setFont('helvetica', 'normal');
+  drawFittedBlock(
+    doc,
+    `${safe(data.siteName, 'Lokasi belum diisi')} • ${reportDate}`,
+    PAGE_W - MARGIN - 9,
+    92,
+    68,
+    7.4,
+    2,
+    5.8,
+    MID_GREY,
+    4,
+    'right',
+  );
 
   drawGauge(doc, 46, 138, data.healthScore);
 
@@ -426,8 +557,6 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setFontSize(7);
   doc.setTextColor(...MID_GREY);
   doc.text('KESIMPULAN UNTUK MANAJEMEN', 83, 119);
-  doc.setFontSize(15);
-  doc.setTextColor(...BLACK);
   const headline = data.healthScore <= 40
     ? 'Battery perlu mendapat perhatian segera.'
     : data.healthScore <= 65
@@ -435,21 +564,24 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
       : data.healthScore <= 80
         ? 'Kondisi perlu dipantau lebih dekat.'
         : 'Kondisi masih mendukung operasi saat ini.';
-  doc.text(doc.splitTextToSize(headline, 105) as string[], 83, 131);
 
-  let y = paragraph(doc, executiveNarrative(data), 83, 145, 105, 9.2, GREY, 5.0);
-  const cardsY = Math.max(184, y + 8);
+  doc.setFont('helvetica', 'bold');
+  drawFittedBlock(doc, headline, 83, 131, 105, 15, 2, 11, BLACK, 6.5);
+
+  let y = paragraph(doc, executiveNarrative(data), 83, 147, 105, 8.9, GREY, 4.7);
+  const cardsY = Math.max(183, y + 7);
   metricCard(doc, MARGIN, cardsY, 40, 'Prioritas', cleanClientText(data.urgency) || '-', 'Tingkat tindak lanjut');
   metricCard(doc, MARGIN + 45, cardsY, 40, 'Keyakinan', `${data.confidence}%`, 'Kekuatan data yang tersedia');
   metricCard(doc, MARGIN + 90, cardsY, 40, 'Keluhan', `${data.issues.length}`, 'Gejala yang dilaporkan');
   metricCard(doc, MARGIN + 135, cardsY, 39, 'Armada', `${data.fleetSize} unit`, 'Cakupan perhitungan');
 
-  y = quoteCard(doc, decisionStatement(data), cardsY + 46, true) + 7;
+  y = quoteCard(doc, decisionStatement(data), cardsY + 47, true);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.7);
+  doc.setFontSize(6.3);
   doc.setTextColor(...GREY);
-  doc.text('Disusun dengan prinsip keterlacakan: data, temuan, dampak, risiko, rekomendasi, dan verifikasi.', MARGIN, Math.min(263, y));
-  doc.text('Keputusan teknis akhir tetap memerlukan pemeriksaan kondisi aktual di lapangan.', MARGIN, Math.min(269, y + 6));
+  if (y < 268) {
+    doc.text('Disusun dengan prinsip keterlacakan: data, temuan, dampak, risiko, rekomendasi, dan verifikasi.', MARGIN, Math.min(268, y + 6));
+  }
 
   // 2. DATA & KONDISI LAPANGAN
   newPage(doc, 2, 'Data & Kondisi Lapangan');
@@ -462,22 +594,22 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
 
   doc.setFillColor(...WHITE);
   doc.setDrawColor(...LIGHT);
-  doc.roundedRect(MARGIN, y, CONTENT_W, 61, 4, 4, 'FD');
+  doc.roundedRect(MARGIN, y, CONTENT_W, 63, 4, 4, 'FD');
   labelValue(doc, 'Brand & Model', `${data.brand} ${data.model}`, MARGIN + 6, y + 12, 76);
   labelValue(doc, 'Jenis Unit', data.category, 110, y + 12, 76);
-  labelValue(doc, 'Battery Saat Ini', `${data.batteryType} • ${data.voltage} • ${data.capacity}`, MARGIN + 6, y + 32, 76);
-  labelValue(doc, 'Pola Kerja', `${data.shift} shift • ${data.operatingHoursPerDay} jam/hari`, 110, y + 32, 76);
-  labelValue(doc, 'Umur Battery', `${data.batteryAgeYears} tahun`, MARGIN + 6, y + 50, 76);
-  labelValue(doc, 'Isi Air Battery', `${data.wateringPerWeek}x per minggu`, 110, y + 50, 76);
+  labelValue(doc, 'Battery Saat Ini', `${data.batteryType} • ${data.voltage} • ${data.capacity}`, MARGIN + 6, y + 33, 76);
+  labelValue(doc, 'Pola Kerja', `${data.shift} shift • ${data.operatingHoursPerDay} jam/hari`, 110, y + 33, 76);
+  labelValue(doc, 'Umur Battery', `${data.batteryAgeYears} tahun`, MARGIN + 6, y + 52, 76);
+  labelValue(doc, 'Isi Air Battery', `${data.wateringPerWeek}x per minggu`, 110, y + 52, 76);
 
-  y += 76;
-  y = quoteCard(doc, fieldNarrative(data), y, false) + 12;
+  y += 77;
+  y = quoteCard(doc, fieldNarrative(data), y, false) + 11;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
   doc.text('Keluhan utama', MARGIN, y);
-  bulletList(doc, data.issues, MARGIN, y + 10, 80, 10);
+  bulletList(doc, data.issues, MARGIN, y + 10, 80, 8, 7.8, 4.0);
 
   doc.text('Kondisi yang dikonfirmasi', 110, y);
   bulletList(
@@ -493,6 +625,8 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     y + 10,
     80,
     7,
+    7.8,
+    4.0,
   );
 
   // 3. KONDISI BATTERY & PENYEBAB
@@ -509,12 +643,23 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setFontSize(7);
   doc.setTextColor(...MID_GREY);
   doc.text('KONDISI SAAT INI', 85, y + 8);
-  doc.setFontSize(16);
-  doc.setTextColor(...BLACK);
-  doc.text(`${conditionLabel(data.healthScore)} • Skor Kondisi ${data.healthScore}%`, 85, y + 20);
-  paragraph(doc, executiveNarrative(data), 85, y + 31, 103, 8.7, GREY, 4.8);
 
-  y += 71;
+  doc.setFont('helvetica', 'bold');
+  drawFittedBlock(
+    doc,
+    `${conditionLabel(data.healthScore)} • Skor Kondisi ${data.healthScore}%`,
+    85,
+    y + 20,
+    103,
+    16,
+    2,
+    11,
+    BLACK,
+    6.5,
+  );
+  paragraph(doc, executiveNarrative(data), 85, y + 34, 103, 8.3, GREY, 4.5);
+
+  y += 72;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
@@ -523,18 +668,19 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   let causeY = y + 12;
   if (safeCauses.length) {
     for (const cause of safeCauses) {
+      if (causeY > 225) break;
       causeY = drawBar(doc, MARGIN, causeY, CONTENT_W, cause.name, cause.value, cause.reason || undefined);
     }
   } else {
     causeY = paragraph(doc, 'Belum ada penyebab yang cukup kuat untuk ditampilkan dari data sesi ini.', MARGIN, causeY, CONTENT_W, 8.5, GREY);
   }
 
-  if (safeFindings.length && causeY < 232) {
+  if (safeFindings.length && causeY < 224) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setTextColor(...BLACK);
     doc.text('Hal yang perlu diperiksa lebih lanjut', MARGIN, causeY + 8);
-    bulletList(doc, safeFindings, MARGIN, causeY + 18, CONTENT_W, 5);
+    bulletList(doc, safeFindings, MARGIN, causeY + 18, CONTENT_W, 3, 7.6, 3.9);
   }
 
   // 4. DAMPAK TERHADAP OPERASI
@@ -551,13 +697,13 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', `${data.maintenanceActionsPerYear}x/thn`, 'Isi air dan pemeriksaan rutin');
   metricCard(doc, MARGIN + 135, y, 39, 'Produktivitas', `-${data.productivityLossPercent}%`, 'Terhadap jam operasi tersedia');
 
-  y += 49;
+  y += 52;
   y = quoteCard(
     doc,
     `Pada armada ${data.fleetSize} unit dengan pola sekitar ${data.simulationHoursPerDay} jam operasi dan ${data.simulationShift} shift, waktu henti, pengisian daya, dan perawatan saling memengaruhi kesiapan unit. Karena itu, keputusan battery perlu dilihat sebagai bagian dari keputusan operasi, bukan sekadar penggantian komponen.`,
     y,
     true,
-  ) + 13;
+  ) + 12;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -575,6 +721,8 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     y + 10,
     CONTENT_W,
     6,
+    8.0,
+    4.1,
   );
 
   // 5. DAMPAK BIAYA
@@ -591,50 +739,62 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     metricCard(doc, MARGIN + 60, y, 54, 'Perawatan / bulan', rupiah(monthlyMaintenanceCost), 'Berdasarkan data perusahaan');
     metricCard(doc, MARGIN + 120, y, 54, 'Pengisian / bulan', rupiah(monthlyChargingCost), 'Berdasarkan data perusahaan');
 
-    y += 48;
+    y += 52;
     doc.setFillColor(...BLACK);
-    doc.roundedRect(MARGIN, y, CONTENT_W, 63, 5, 5, 'F');
+    doc.roundedRect(MARGIN, y, CONTENT_W, 65, 5, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...MID_GREY);
     doc.text('PERKIRAAN BEBAN OPERASIONAL SETAHUN', MARGIN + 8, y + 13);
-    doc.setFontSize(23);
-    doc.setTextColor(...WHITE);
-    doc.text(rupiah(annualOperatingCost), MARGIN + 8, y + 30);
-    doc.setFontSize(8.3);
+
+    doc.setFont('helvetica', 'bold');
+    drawFittedBlock(doc, rupiah(annualOperatingCost), MARGIN + 8, y + 30, CONTENT_W - 16, 23, 2, 13, WHITE, 8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.1);
     doc.setTextColor(...MID_GREY);
-    doc.text('berdasarkan angka biaya yang diberikan perusahaan', MARGIN + 8, y + 39);
+    doc.text('berdasarkan angka biaya yang diberikan perusahaan', MARGIN + 8, y + 41);
 
     doc.setFillColor(...YELLOW);
-    doc.roundedRect(MARGIN + 8, y + 46, CONTENT_W - 16, 10, 2, 2, 'F');
-    doc.setTextColor(...BLACK);
-    doc.setFontSize(8);
-    doc.text(`Skenario potensi pengurangan beban: ${rupiah(annualSavingScenario)} / tahun`, MARGIN + 13, y + 52.5);
+    doc.roundedRect(MARGIN + 8, y + 48, CONTENT_W - 16, 11, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    drawFittedBlock(
+      doc,
+      `Skenario potensi pengurangan beban: ${rupiah(annualSavingScenario)} / tahun`,
+      MARGIN + 13,
+      y + 55,
+      CONTENT_W - 26,
+      8,
+      2,
+      6.2,
+      BLACK,
+      4,
+    );
 
-    y += 79;
+    y += 80;
     quoteCard(doc, 'Angka ini bukan harga battery dan bukan penawaran komersial. Nilainya digunakan untuk memahami besarnya beban operasi yang mungkin dapat dikurangi.', y, false);
   } else {
     doc.setFillColor(...BLACK);
-    doc.roundedRect(MARGIN, y, CONTENT_W, 72, 5, 5, 'F');
+    doc.roundedRect(MARGIN, y, CONTENT_W, 74, 5, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...MID_GREY);
     doc.text('STATUS DATA BIAYA', MARGIN + 8, y + 13);
-    doc.setFontSize(20);
-    doc.setTextColor(...WHITE);
-    doc.text('Menunggu data biaya perusahaan', MARGIN + 8, y + 29);
+
+    doc.setFont('helvetica', 'bold');
+    drawFittedBlock(doc, 'Menunggu data biaya perusahaan', MARGIN + 8, y + 29, CONTENT_W - 16, 20, 2, 13, WHITE, 7.5);
     paragraph(
       doc,
       'Tidak mengetahui biaya internal bukan masalah. Dampak operasi tetap dapat dibaca dari waktu henti, waktu pengisian daya, pekerjaan perawatan, dan kehilangan produktivitas. Nilai Rupiah baru dihitung setelah data biaya perusahaan tersedia.',
       MARGIN + 8,
-      y + 41,
+      y + 44,
       CONTENT_W - 16,
-      8.6,
+      8.3,
       MID_GREY,
-      4.7,
+      4.5,
     );
 
-    y += 88;
+    y += 90;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...BLACK);
@@ -650,6 +810,8 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
       y + 11,
       CONTENT_W,
       5,
+      8.0,
+      4.1,
     );
   }
 
@@ -684,38 +846,50 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setFillColor(...YELLOW);
   doc.roundedRect(x3, y, PAGE_W - MARGIN - x3, 16, 0, 3, 'F');
   doc.setTextColor(...BLACK);
-  doc.text('LITHIUM-ION UNTUK DIEVALUASI', x3 + 4, y + 10);
+  drawFittedBlock(doc, 'LITHIUM-ION UNTUK DIEVALUASI', x3 + 4, y + 10, 55, 7.2, 2, 5.8, BLACK, 3.5);
 
   let tableY = y + 16;
   for (const [parameter, lead, lithium] of rows) {
+    doc.setFont('helvetica', 'bold');
+    const parameterFit = fitTextBlock(doc, parameter, 48, 7.5, 4, 6.4);
+    doc.setFont('helvetica', 'normal');
+    const leadFit = fitTextBlock(doc, lead, 51, 7.1, 4, 6.2);
+    doc.setFont('helvetica', 'bold');
+    const lithiumFit = fitTextBlock(doc, lithium, 54, 7.1, 4, 6.2);
+    const maxLines = Math.max(parameterFit.lines.length, leadFit.lines.length, lithiumFit.lines.length);
+    const rowHeight = Math.max(22, 10 + maxLines * 4.1);
+
     doc.setFillColor(...WHITE);
     doc.setDrawColor(...LIGHT);
-    doc.rect(MARGIN, tableY, CONTENT_W, 24, 'FD');
+    doc.rect(MARGIN, tableY, CONTENT_W, rowHeight, 'FD');
     doc.setFillColor(255, 254, 240);
-    doc.rect(x3, tableY, PAGE_W - MARGIN - x3, 24, 'F');
+    doc.rect(x3, tableY, PAGE_W - MARGIN - x3, rowHeight, 'F');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.7);
+    doc.setFontSize(parameterFit.fontSize);
     doc.setTextColor(...BLACK);
-    doc.text((doc.splitTextToSize(parameter, 48) as string[]).slice(0, 3), x1 + 5, tableY + 8);
+    doc.text(parameterFit.lines, x1 + 5, tableY + 8);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.3);
+    doc.setFontSize(leadFit.fontSize);
     doc.setTextColor(...GREY);
-    doc.text((doc.splitTextToSize(lead, 51) as string[]).slice(0, 3), x2 + 4, tableY + 8);
+    doc.text(leadFit.lines, x2 + 4, tableY + 8);
 
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(lithiumFit.fontSize);
     doc.setTextColor(...BLACK);
-    doc.text((doc.splitTextToSize(lithium, 54) as string[]).slice(0, 3), x3 + 4, tableY + 8);
-    tableY += 24;
+    doc.text(lithiumFit.lines, x3 + 4, tableY + 8);
+    tableY += rowHeight;
   }
 
-  quoteCard(
-    doc,
-    'Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan. Kelayakannya bergantung pada pola kerja unit, charger, konektor, ruang battery, temperatur, jumlah shift, dan target kesiapan unit.',
-    tableY + 10,
-    true,
-  );
+  if (tableY < 237) {
+    quoteCard(
+      doc,
+      'Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan. Kelayakannya bergantung pada pola kerja unit, charger, konektor, ruang battery, temperatur, jumlah shift, dan target kesiapan unit.',
+      tableY + 9,
+      true,
+    );
+  }
 
   // 7. DASAR KEPUTUSAN INVESTASI
   newPage(doc, 7, 'Dasar Keputusan Investasi');
@@ -731,16 +905,16 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', `-${data.maintenanceReductionPercent}%`, 'Potensi pengurangan pekerjaan rutin');
   metricCard(doc, MARGIN + 135, y, 39, 'Kesesuaian', cleanClientText(data.operationalFit) || '-', 'Terhadap shift & jam operasi');
 
-  y += 50;
+  y += 52;
   y = quoteCard(
     doc,
     `Pada armada ${data.fleetSize} unit, operasi ${data.simulationShift} shift dan sekitar ${data.simulationHoursPerDay} jam per hari, manfaat utama dari teknologi battery yang lebih sesuai adalah menjaga forklift tersedia ketika dibutuhkan. Dasar keputusan investasi sebaiknya menghubungkan teknologi dengan kesiapan unit, waktu pengisian, perawatan, dan produktivitas.`,
     y,
     true,
-  ) + 14;
+  ) + 12;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(9.8);
   doc.setTextColor(...BLACK);
   doc.text('Pertanyaan yang perlu dijawab sebelum keputusan investasi', MARGIN, y);
   bulletList(
@@ -758,7 +932,9 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     MARGIN,
     y + 11,
     CONTENT_W,
-    7,
+    6,
+    7.8,
+    4.0,
   );
 
   // 8. REKOMENDASI & VERIFIKASI
@@ -771,20 +947,22 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   );
 
   doc.setFillColor(...BLACK);
-  doc.roundedRect(MARGIN, y, CONTENT_W, 70, 5, 5, 'F');
+  doc.roundedRect(MARGIN, y, CONTENT_W, 72, 5, 5, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...MID_GREY);
   doc.text('REKOMENDASI DRRKOBE', MARGIN + 8, y + 13);
-  doc.setFontSize(20);
-  doc.setTextColor(...WHITE);
+
   const recommendationHeadline = data.healthScore <= 65
     ? 'Lanjutkan ke Pemeriksaan Teknis Lapangan'
     : 'Pertahankan Pemantauan & Verifikasi Berkala';
-  doc.text(recommendationHeadline, MARGIN + 8, y + 29);
-  paragraph(doc, decisionStatement(data), MARGIN + 8, y + 41, CONTENT_W - 16, 8.9, MID_GREY, 4.8);
+  doc.setFont('helvetica', 'bold');
+  drawFittedBlock(doc, recommendationHeadline, MARGIN + 8, y + 29, CONTENT_W - 16, 20, 2, 13, WHITE, 7.5);
 
-  y += 86;
+  doc.setFont('helvetica', 'normal');
+  drawFittedBlock(doc, decisionStatement(data), MARGIN + 8, y + 45, CONTENT_W - 16, 8.7, 4, 7.2, MID_GREY, 4.5);
+
+  y += 88;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
@@ -802,18 +980,20 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     MARGIN,
     y + 11,
     CONTENT_W,
-    7,
+    6,
+    7.5,
+    3.8,
   );
 
-  if (safeActions.length && y < 225) {
+  if (safeActions.length && y < 218) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(9.2);
     doc.setTextColor(...BLACK);
-    doc.text('Catatan tindak lanjut', MARGIN, y + 8);
-    y = bulletList(doc, safeActions, MARGIN, y + 18, CONTENT_W, 4);
+    doc.text('Catatan tindak lanjut', MARGIN, y + 7);
+    y = bulletList(doc, safeActions, MARGIN, y + 16, CONTENT_W, 2, 7.2, 3.7);
   }
 
-  const closingY = Math.max(236, y + 8);
+  const closingY = 236;
   doc.setFillColor(...YELLOW);
   doc.roundedRect(MARGIN, closingY, CONTENT_W, 28, 4, 4, 'F');
   doc.setFont('helvetica', 'bold');
@@ -821,20 +1001,20 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setTextColor(...BLACK);
   doc.text('Langkah berikutnya', MARGIN + 7, closingY + 10);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.1);
-  doc.text(
-    doc.splitTextToSize('Jadwalkan pemeriksaan teknis bersama DRRKOBE untuk memvalidasi kondisi aktual dan menentukan pilihan yang paling sesuai dengan kebutuhan operasi perusahaan.', CONTENT_W - 14) as string[],
+  drawFittedBlock(
+    doc,
+    'Jadwalkan pemeriksaan teknis bersama DRRKOBE untuk memvalidasi kondisi aktual dan menentukan pilihan yang paling sesuai dengan kebutuhan operasi perusahaan.',
     MARGIN + 7,
     closingY + 18,
+    CONTENT_W - 14,
+    8.0,
+    2,
+    6.6,
+    BLACK,
+    4.2,
   );
 
-  doc.setFontSize(6.4);
-  doc.setTextColor(...GREY);
-  doc.text('Nomor penilaian:', MARGIN, 276);
-  doc.setFont('helvetica', 'bold');
-  doc.text(data.diagnosisId, MARGIN + 22, 276);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Dokumen ini bukan sertifikat kepatuhan atau sertifikasi ISO dan tidak menggantikan inspeksi teknis lapangan.', PAGE_W - MARGIN, 276, { align: 'right' });
+  drawFooterDisclaimer(doc, data.diagnosisId);
 
   const fileName = `DRRKOBE_Assessment_${filenamePart(safe(data.companyName, 'Client'))}_${filenamePart(data.model)}_${filenamePart(data.diagnosisId)}.pdf`;
   doc.save(fileName);
