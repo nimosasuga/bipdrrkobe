@@ -35,4 +35,5 @@ BATAS:
 CONTEXT:
 ${JSON.stringify(context)}`;
 
-return [{ json: { prompt } }];
+// Node mode: Run Once for Each Item.
+return { json: { prompt } };
