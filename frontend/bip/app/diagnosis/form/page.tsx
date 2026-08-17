@@ -17,7 +17,6 @@ type ForkliftModel = {
   battery_voltage: number | null;
   battery_capacity_ah: number | null;
 };
-
 type Cause = { name?: string; prob?: number; cause?: string; confidence?: number; reason?: string };
 type DiagnosisResponse = {
   diagnosis_id: string;
@@ -28,7 +27,6 @@ type DiagnosisResponse = {
   recommendation: string;
   causes: Cause[];
 };
-
 type AiResult = {
   analyzed: boolean;
   summary: string | null;
@@ -39,6 +37,7 @@ type AiResult = {
   urgency: string | null;
   confidence: number | null;
 };
+type FinancialMode = 'unknown' | 'partial' | 'full';
 
 const issues = [
   ['battery_fast', 'Battery Cepat Habis', 'Drop < 4 jam per shift'],
@@ -83,6 +82,7 @@ export default function DiagnosisFormPage() {
   const [roiShift, setRoiShift] = useState(2);
   const [companyName, setCompanyName] = useState('');
   const [siteName, setSiteName] = useState('');
+  const [financialMode, setFinancialMode] = useState<FinancialMode>('unknown');
   const [downtimeCostPerHour, setDowntimeCostPerHour] = useState(0);
   const [maintenanceCostPerUnitMonth, setMaintenanceCostPerUnitMonth] = useState(0);
   const [chargingCostPerUnitMonth, setChargingCostPerUnitMonth] = useState(0);
@@ -147,9 +147,7 @@ export default function DiagnosisFormPage() {
 
     const refresh = async () => {
       try {
-        const response = await fetch(`${API_BASE}/diagnosis/${diagnosisId}/result`, {
-          headers: { Accept: 'application/json' },
-        });
+        const response = await fetch(`${API_BASE}/diagnosis/${diagnosisId}/result`, { headers: { Accept: 'application/json' } });
         if (!response.ok) return;
         const payload = await response.json();
         if (stopped) return;
@@ -193,6 +191,19 @@ export default function DiagnosisFormPage() {
     setSelectedIssues((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   }
 
+  function chooseFinancialMode(mode: FinancialMode) {
+    setFinancialMode(mode);
+    if (mode === 'unknown') {
+      setDowntimeCostPerHour(0);
+      setMaintenanceCostPerUnitMonth(0);
+      setChargingCostPerUnitMonth(0);
+    }
+    if (mode === 'partial') {
+      setMaintenanceCostPerUnitMonth(0);
+      setChargingCostPerUnitMonth(0);
+    }
+  }
+
   async function createDiagnosis() {
     if (!modelId) return;
     setProcessing(true);
@@ -219,12 +230,8 @@ export default function DiagnosisFormPage() {
           },
         }),
       });
-
       const payload = await response.json();
-      if (!response.ok || !payload.diagnosis_id) {
-        throw new Error(payload.message ?? 'Diagnosis gagal diproses.');
-      }
-
+      if (!response.ok || !payload.diagnosis_id) throw new Error(payload.message ?? 'Diagnosis gagal diproses.');
       setDiagnosis(payload);
       setDiagnosisId(payload.diagnosis_id);
       setStep(5);
@@ -245,6 +252,7 @@ export default function DiagnosisFormPage() {
     setAi(null);
     setCompanyName('');
     setSiteName('');
+    setFinancialMode('unknown');
     setDowntimeCostPerHour(0);
     setMaintenanceCostPerUnitMonth(0);
     setChargingCostPerUnitMonth(0);
@@ -276,12 +284,11 @@ export default function DiagnosisFormPage() {
     monthlyMaintenanceCost * 0.9 +
     monthlyChargingCost * 0.28
   ) * 12;
-  const hasFinancialInputs = annualOperatingExposure > 0;
+  const hasFinancialInputs = financialMode !== 'unknown' && annualOperatingExposure > 0;
 
   const rootCauseText = causeRows.length
     ? causeRows.slice(0, 3).map((cause, index) => `${index + 1}. ${cause.name} (${cause.value}%)`).join('\n')
     : '- Belum tersedia';
-
   const issueText = selectedIssueLabels.length
     ? selectedIssueLabels.map((label, index) => `${index + 1}. ${label}`).join('\n')
     : '- Tidak ada';
@@ -290,12 +297,7 @@ export default function DiagnosisFormPage() {
     'Halo tim DRRKOBE,',
     '',
     'Saya sudah menyelesaikan diagnosis di DRRKOBE Battery Intelligence Platform dan ingin mengajukan technical assessment.',
-    ...(companyName || siteName ? [
-      '',
-      '*DATA PERUSAHAAN*',
-      `Perusahaan: ${companyName || '-'}`,
-      `Lokasi/site: ${siteName || '-'}`,
-    ] : []),
+    ...(companyName || siteName ? ['', '*DATA PERUSAHAAN*', `Perusahaan: ${companyName || '-'}`, `Lokasi/site: ${siteName || '-'}`] : []),
     '',
     '*DATA UNIT*',
     `Brand: ${selectedBrand?.name || '-'}`,
@@ -336,24 +338,16 @@ export default function DiagnosisFormPage() {
     'Potensi peningkatan efisiensi energi: 28%',
     'Potensi pengurangan aktivitas maintenance: 90%',
     `Operational fit: ${operationalFit}`,
-    ...(hasFinancialInputs ? [
-      '',
-      '*INPUT BIAYA OPERASIONAL*',
-      `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`,
-      `Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`,
-      `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`,
-      `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`,
-      `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)}`,
-    ] : []),
+    ...(hasFinancialInputs
+      ? ['', '*DATA BIAYA YANG TERSEDIA*', `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`, ...(financialMode === 'full' ? [`Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`, `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`] : []), `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`, `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)}`]
+      : ['', '*STATUS FINANSIAL*', 'Menunggu validasi data biaya perusahaan. Dampak operasional tetap dihitung tanpa membuat asumsi nominal biaya.']),
     '',
     'Mohon dibantu untuk langkah technical assessment berikutnya. Data di atas merupakan hasil awal BIP dan keputusan teknis tetap memerlukan verifikasi kondisi aktual di lapangan.',
   ].join('\n');
-
   const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMessage)}`;
 
   function handleDownloadReport() {
     if (!diagnosis || !diagnosisId) return;
-
     downloadAssessmentPdf({
       diagnosisId,
       companyName,
@@ -402,7 +396,6 @@ export default function DiagnosisFormPage() {
   return (
     <main className="min-h-screen bg-[#FCFCF9] text-[#0A0A0A]">
       <Progress step={step} />
-
       <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
         {step === 1 && (
           <StepFrame eyebrow="STEP 1 / 9 — MODEL SELECTION" title="Pilih Model Forklift">
@@ -442,25 +435,12 @@ export default function DiagnosisFormPage() {
             <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
               <Panel>
                 <div className="flex items-center justify-between gap-4 rounded-2xl border-2 border-[#FFCC00] bg-[#FFFEF0] p-5">
-                  <div>
-                    <Mono>CURRENT TECHNOLOGY</Mono>
-                    <h3 className="mt-2 text-2xl font-black">Lead Acid</h3>
-                    <p className="mt-2 text-sm text-zinc-600">Diagnosis saat ini difokuskan pada unit yang masih menggunakan battery Lead Acid. Lithium-ion digunakan sebagai bahan perbandingan teknis pada tahap berikutnya.</p>
-                  </div>
+                  <div><Mono>CURRENT TECHNOLOGY</Mono><h3 className="mt-2 text-2xl font-black">Lead Acid</h3><p className="mt-2 text-sm text-zinc-600">Diagnosis saat ini difokuskan pada unit yang masih menggunakan battery Lead Acid. Lithium-ion digunakan sebagai bahan perbandingan teknis pada tahap berikutnya.</p></div>
                   <div className="grid h-14 w-14 place-items-center rounded-full bg-[#FFCC00] text-2xl font-black">LA</div>
                 </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <Metric label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} />
-                  <Metric label="System Voltage" value={selectedModel?.battery_voltage ? `${selectedModel.battery_voltage} V` : '-'} />
-                  <Metric label="Nominal Capacity" value={selectedModel?.battery_capacity_ah ? `${selectedModel.battery_capacity_ah} Ah` : '-'} />
-                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3"><Metric label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} /><Metric label="System Voltage" value={selectedModel?.battery_voltage ? `${selectedModel.battery_voltage} V` : '-'} /><Metric label="Nominal Capacity" value={selectedModel?.battery_capacity_ah ? `${selectedModel.battery_capacity_ah} Ah` : '-'} /></div>
               </Panel>
-              <div className="rounded-[24px] border border-zinc-200 bg-white p-6">
-                <Mono>WHY THIS MATTERS</Mono>
-                <h3 className="mt-3 text-xl font-black">Kondisi awal harus jelas sebelum diagnosis.</h3>
-                <p className="mt-3 text-sm leading-6 text-zinc-600">Tipe battery dikunci pada Lead Acid agar Health Score, perbandingan teknologi, dan rekomendasi tetap konsisten dengan kondisi unit yang dinilai.</p>
-                <div className="mt-5 rounded-xl bg-[#0A0A0A] p-4 text-sm font-semibold text-white">Tidak ada harga yang ditampilkan pada proses diagnosis.</div>
-              </div>
+              <Panel><Mono>WHY THIS MATTERS</Mono><h3 className="mt-3 text-xl font-black">Kondisi awal harus jelas sebelum diagnosis.</h3><p className="mt-3 text-sm leading-6 text-zinc-600">Tipe battery dikunci pada Lead Acid agar Health Score, perbandingan teknologi, dan rekomendasi tetap konsisten dengan kondisi unit yang dinilai.</p><div className="mt-5 rounded-xl bg-[#0A0A0A] p-4 text-sm font-semibold text-white">Tidak ada harga yang ditampilkan pada proses diagnosis.</div></Panel>
             </div>
             <Nav error={error} onBack={goBack} onNext={goNext} />
           </StepFrame>
@@ -472,19 +452,10 @@ export default function DiagnosisFormPage() {
             <div className="grid gap-3 md:grid-cols-2">
               {issues.map(([key, title, description]) => {
                 const active = selectedIssues.includes(key);
-                return (
-                  <button key={key} type="button" onClick={() => toggleIssue(key)} className={`rounded-[18px] border p-5 text-left transition ${active ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white shadow-lg' : 'border-zinc-200 bg-white hover:border-zinc-400'}`}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div><div className="font-black">{title}</div><div className={`mt-1 text-sm ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{description}</div></div>
-                      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${active ? 'bg-[#FFCC00] text-black' : 'border border-zinc-300'}`}>{active ? '✓' : '+'}</span>
-                    </div>
-                  </button>
-                );
+                return <button key={key} type="button" onClick={() => toggleIssue(key)} className={`rounded-[18px] border p-5 text-left transition ${active ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white shadow-lg' : 'border-zinc-200 bg-white hover:border-zinc-400'}`}><div className="flex items-start justify-between gap-4"><div><div className="font-black">{title}</div><div className={`mt-1 text-sm ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{description}</div></div><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${active ? 'bg-[#FFCC00] text-black' : 'border border-zinc-300'}`}>{active ? '✓' : '+'}</span></div></button>;
               })}
             </div>
-            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#FFFEF0] px-4 py-3 text-sm">
-              <span>Masalah dipilih</span><strong>{selectedIssues.length} / 10</strong>
-            </div>
+            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#FFFEF0] px-4 py-3 text-sm"><span>Masalah dipilih</span><strong>{selectedIssues.length} / 10</strong></div>
             <Nav error={error} onBack={goBack} onNext={goNext} nextLabel="Detail Operasional" />
           </StepFrame>
         )}
@@ -509,36 +480,10 @@ export default function DiagnosisFormPage() {
         {step === 5 && diagnosis && (
           <StepFrame eyebrow="STEP 5 / 9 — AGGREGATED DIAGNOSIS" title="Hasil Diagnosis DRRKOBE">
             <div className="overflow-hidden rounded-[24px] border border-zinc-200 bg-white">
-              <div className="border-b border-zinc-200 p-5 lg:flex lg:items-center lg:justify-between lg:gap-5">
-                <div><div className="font-black">{selectedIssues.length} masalah dianalisis sebagai satu kondisi operasional</div><Mono>Confidence {confidence}% • Multi-Issue Analysis</Mono></div>
-                <div className="mt-4 flex flex-wrap gap-2 lg:mt-0">{selectedIssueLabels.map((label) => <span key={label} className="rounded-full border border-[#FFCC00] bg-[#FFFEF0] px-3 py-1 text-xs font-bold">{label}</span>)}</div>
-              </div>
+              <div className="border-b border-zinc-200 p-5 lg:flex lg:items-center lg:justify-between lg:gap-5"><div><div className="font-black">{selectedIssues.length} masalah dianalisis sebagai satu kondisi operasional</div><Mono>Confidence {confidence}% • Multi-Issue Analysis</Mono></div><div className="mt-4 flex flex-wrap gap-2 lg:mt-0">{selectedIssueLabels.map((label) => <span key={label} className="rounded-full border border-[#FFCC00] bg-[#FFFEF0] px-3 py-1 text-xs font-bold">{label}</span>)}</div></div>
               <div className="grid lg:grid-cols-[340px_1fr]">
-                <div className="border-b border-zinc-200 p-7 lg:border-b-0 lg:border-r">
-                  <Mono>BATTERY HEALTH SCORE</Mono>
-                  <HealthGauge value={health} />
-                  <div className="mt-7 space-y-3 text-sm">
-                    <KeyValue label="Urgency" value={urgency} />
-                    <KeyValue label="Confidence" value={`${confidence}%`} />
-                    <KeyValue label="Issues" value={`${selectedIssues.length} masalah`} />
-                  </div>
-                  <Mono className="mt-8">DRRKOBE.COM/BIP • Diagnostic Engine</Mono>
-                </div>
-                <div className="p-7">
-                  <Mono>ROOT CAUSE ANALYSIS</Mono>
-                  <div className="mt-6 space-y-5">
-                    {causeRows.map((cause, index) => <CauseBar key={`${cause.name}-${index}`} name={cause.name} value={cause.value} />)}
-                  </div>
-                  <div className="mt-7 rounded-[18px] bg-[#0A0A0A] p-5 text-white">
-                    <div className="font-black text-[#FFCC00]">DRRKOBE INTERPRETATION</div>
-                    <p className="mt-2 text-sm leading-6 text-zinc-300">{ai?.summary || `Health Score ${health}% terbentuk dari kombinasi usia battery, pola ${shift} shift, charging, downtime, frekuensi isi air, dan ${selectedIssues.length} masalah yang dipilih. Analisis lanjutan sedang diproses tanpa menahan hasil utama.`}</p>
-                  </div>
-                  {!ai?.analyzed && <div className="mt-4 flex items-center gap-3 text-xs font-bold text-zinc-500"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFCC00]" /> Analisis teknis lanjutan sedang diproses...</div>}
-                  <div className="mt-7 grid gap-3 sm:grid-cols-2">
-                    <Metric label="Dampak" value={`${selectedIssues.length} masalah saling berkaitan`} />
-                    <Metric label="Selanjutnya" value="Dampak operasional & perbandingan teknologi" />
-                  </div>
-                </div>
+                <div className="border-b border-zinc-200 p-7 lg:border-b-0 lg:border-r"><Mono>BATTERY HEALTH SCORE</Mono><HealthGauge value={health} /><div className="mt-7 space-y-3 text-sm"><KeyValue label="Urgency" value={urgency} /><KeyValue label="Confidence" value={`${confidence}%`} /><KeyValue label="Issues" value={`${selectedIssues.length} masalah`} /></div><Mono className="mt-8">DRRKOBE.COM/BIP • Diagnostic Engine</Mono></div>
+                <div className="p-7"><Mono>ROOT CAUSE ANALYSIS</Mono><div className="mt-6 space-y-5">{causeRows.map((cause, index) => <CauseBar key={`${cause.name}-${index}`} name={cause.name} value={cause.value} />)}</div><div className="mt-7 rounded-[18px] bg-[#0A0A0A] p-5 text-white"><div className="font-black text-[#FFCC00]">DRRKOBE INTERPRETATION</div><p className="mt-2 text-sm leading-6 text-zinc-300">{ai?.summary || `Health Score ${health}% terbentuk dari kombinasi usia battery, pola ${shift} shift, charging, downtime, frekuensi isi air, dan ${selectedIssues.length} masalah yang dipilih. Analisis lanjutan sedang diproses tanpa menahan hasil utama.`}</p></div>{!ai?.analyzed && <div className="mt-4 flex items-center gap-3 text-xs font-bold text-zinc-500"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFCC00]" /> Analisis teknis lanjutan sedang diproses...</div>}<div className="mt-7 grid gap-3 sm:grid-cols-2"><Metric label="Dampak" value={`${selectedIssues.length} masalah saling berkaitan`} /><Metric label="Selanjutnya" value="Dampak operasional & perbandingan teknologi" /></div></div>
               </div>
             </div>
             <Nav onBack={() => setStep(4)} onNext={() => setStep(6)} nextLabel="Lihat Dampak" />
@@ -548,34 +493,15 @@ export default function DiagnosisFormPage() {
         {step === 6 && diagnosis && (
           <StepFrame eyebrow="STEP 6 / 9 — AGGREGATED IMPACT" title="Dampak Operasional Gabungan">
             <Mono>DRRKOBE Reporting Engine • {selectedIssues.length} masalah • tanpa nominal harga</Mono>
-            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="Downtime" value={`${downtimeHours} jam/bulan`} sub="Perkiraan waktu berhenti tidak terencana" />
-              <MetricCard label="Charging Exposure" value={`${chargingWaste} jam/bulan`} sub="Waktu charging yang tidak produktif" />
-              <MetricCard label="Maintenance" value={`${maintenanceYear} tindakan/tahun`} sub="Isi air dan pemeriksaan rutin" />
-              <MetricCard label="Productivity" value={`-${productivityLoss}%`} sub="Terhadap jam operasional tersedia" />
-            </div>
-            <Panel className="mt-6">
-              <div className="font-black">Kontribusi tiap masalah terhadap kondisi operasional</div>
-              <div className="mt-6 space-y-5">
-                {selectedIssueLabels.slice(0, 5).map((label, index) => {
-                  const width = Math.max(25, 78 - index * 9);
-                  return <div key={label}><div className="mb-2 flex justify-between text-xs text-zinc-600"><span>{label}</span><span>{width}% bobot indikasi</span></div><div className="h-3 overflow-hidden rounded-full bg-zinc-100"><div className="h-full bg-[#0A0A0A]" style={{ width: `${width}%` }} /></div></div>;
-                })}
-              </div>
-              <p className="mt-6 text-xs leading-5 text-zinc-500">Angka di atas adalah indikator operasional berdasarkan data yang diisi. Tidak ada harga atau nominal biaya yang ditampilkan.</p>
-            </Panel>
+            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><MetricCard label="Downtime" value={`${downtimeHours} jam/bulan`} sub="Perkiraan waktu berhenti tidak terencana" /><MetricCard label="Charging Exposure" value={`${chargingWaste} jam/bulan`} sub="Waktu charging yang tidak produktif" /><MetricCard label="Maintenance" value={`${maintenanceYear} tindakan/tahun`} sub="Isi air dan pemeriksaan rutin" /><MetricCard label="Productivity" value={`-${productivityLoss}%`} sub="Terhadap jam operasional tersedia" /></div>
+            <Panel className="mt-6"><div className="font-black">Kontribusi tiap masalah terhadap kondisi operasional</div><div className="mt-6 space-y-5">{selectedIssueLabels.slice(0, 5).map((label, index) => { const width = Math.max(25, 78 - index * 9); return <div key={label}><div className="mb-2 flex justify-between text-xs text-zinc-600"><span>{label}</span><span>{width}% bobot indikasi</span></div><div className="h-3 overflow-hidden rounded-full bg-zinc-100"><div className="h-full bg-[#0A0A0A]" style={{ width: `${width}%` }} /></div></div>; })}</div><p className="mt-6 text-xs leading-5 text-zinc-500">Angka di atas adalah indikator operasional berdasarkan data yang diisi. Tidak ada harga atau nominal biaya yang ditampilkan.</p></Panel>
             <Nav onBack={() => setStep(5)} onNext={() => setStep(7)} nextLabel="Lihat Perbandingan Teknologi" />
           </StepFrame>
         )}
 
         {step === 7 && (
           <StepFrame eyebrow="STEP 7 / 9 — TECHNOLOGY COMPARISON" title="Lead Acid vs Lithium-ion — Perbandingan Teknis">
-            <div className="overflow-x-auto rounded-[24px] border border-zinc-200 bg-white">
-              <table className="min-w-[760px] w-full border-collapse text-sm">
-                <thead><tr className="bg-[#0A0A0A] text-left text-white"><th className="p-5">PARAMETER</th><th className="p-5">LEAD ACID (CURRENT)</th><th className="bg-[#FFCC00] p-5 text-black">LI-ION (TARGET)</th></tr></thead>
-                <tbody>{comparisonRows.map(([parameter, lead, lithium]) => <tr key={parameter} className="border-b border-zinc-100 last:border-0"><td className="p-5 font-black">{parameter}</td><td className="p-5 text-zinc-600">{lead}</td><td className="bg-[#FFFEF0] p-5 font-bold">{lithium}</td></tr>)}</tbody>
-              </table>
-            </div>
+            <div className="overflow-x-auto rounded-[24px] border border-zinc-200 bg-white"><table className="min-w-[760px] w-full border-collapse text-sm"><thead><tr className="bg-[#0A0A0A] text-left text-white"><th className="p-5">PARAMETER</th><th className="p-5">LEAD ACID (CURRENT)</th><th className="bg-[#FFCC00] p-5 text-black">LI-ION (TARGET)</th></tr></thead><tbody>{comparisonRows.map(([parameter, lead, lithium]) => <tr key={parameter} className="border-b border-zinc-100 last:border-0"><td className="p-5 font-black">{parameter}</td><td className="p-5 text-zinc-600">{lead}</td><td className="bg-[#FFFEF0] p-5 font-bold">{lithium}</td></tr>)}</tbody></table></div>
             <div className="mt-4 rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-xs leading-5 text-zinc-600"><b className="text-black">Tidak ada harga yang ditampilkan.</b> Perbandingan ini digunakan sebagai bahan evaluasi teknis dan operasional.</div>
             <Nav onBack={() => setStep(6)} onNext={() => setStep(8)} nextLabel="Hitung Potensi Efisiensi" yellow />
           </StepFrame>
@@ -584,41 +510,48 @@ export default function DiagnosisFormPage() {
         {step === 8 && (
           <StepFrame eyebrow="STEP 8 / 9 — ROI SIMULATOR" title={`Hitung Potensi Efisiensi — ${selectedIssues.length} Masalah`}>
             <div className="grid gap-6 lg:grid-cols-[.9fr_1.35fr]">
-              <Panel>
-                <Range label={`Jumlah Forklift: ${jumlahForklift}`} value={jumlahForklift} min={1} max={20} onChange={setJumlahForklift} />
-                <div className="mt-7"><Range label={`Jam Operasi / Hari: ${roiJamOperasi}h`} value={roiJamOperasi} min={8} max={24} onChange={setRoiJamOperasi} /></div>
-                <div className="mt-7"><Choice label="Shift" value={roiShift} values={[1, 2, 3]} onChange={setRoiShift} suffix=" Shift" /></div>
-                <div className="mt-7 rounded-xl bg-[#FFFEF0] p-4 text-xs leading-5"><b>Catatan:</b> simulasi persentase adalah indikator awal. Nilai aktual harus diverifikasi berdasarkan duty cycle dan kondisi site.</div>
-              </Panel>
-              <div className="rounded-[24px] bg-[#0A0A0A] p-7 text-white">
-                <Mono className="text-zinc-400">SIMULASI • {jumlahForklift} unit • {roiJamOperasi} jam • {roiShift} shift</Mono>
-                <div className="mt-7 grid gap-4 sm:grid-cols-2">
-                  <DarkResult label="Downtime" value={`-${roiDowntime}%`} sub="Potensi pengurangan downtime" />
-                  <DarkResult label="Energy" value="+28%" sub="Potensi peningkatan efisiensi energi" />
-                  <DarkResult label="Maintenance" value="-90%" sub="Potensi pengurangan watering & equalizing" />
-                  <DarkResult label="Operational Fit" value={operationalFit} sub="Berdasarkan shift dan jam operasi" />
-                </div>
-                <div className="mt-6 rounded-[16px] bg-[#FFCC00] p-5 text-black"><b>Potensi operasional:</b> semakin tinggi jam operasi, jumlah unit, dan shift, semakin besar kebutuhan menjaga availability battery dan charging window.</div>
-              </div>
+              <Panel><Range label={`Jumlah Forklift: ${jumlahForklift}`} value={jumlahForklift} min={1} max={20} onChange={setJumlahForklift} /><div className="mt-7"><Range label={`Jam Operasi / Hari: ${roiJamOperasi}h`} value={roiJamOperasi} min={8} max={24} onChange={setRoiJamOperasi} /></div><div className="mt-7"><Choice label="Shift" value={roiShift} values={[1, 2, 3]} onChange={setRoiShift} suffix=" Shift" /></div><div className="mt-7 rounded-xl bg-[#FFFEF0] p-4 text-xs leading-5"><b>Catatan:</b> simulasi persentase adalah indikator awal. Nilai aktual harus diverifikasi berdasarkan duty cycle dan kondisi site.</div></Panel>
+              <div className="rounded-[24px] bg-[#0A0A0A] p-7 text-white"><Mono className="text-zinc-400">SIMULASI • {jumlahForklift} unit • {roiJamOperasi} jam • {roiShift} shift</Mono><div className="mt-7 grid gap-4 sm:grid-cols-2"><DarkResult label="Downtime" value={`-${roiDowntime}%`} sub="Potensi pengurangan downtime" /><DarkResult label="Energy" value="+28%" sub="Potensi peningkatan efisiensi energi" /><DarkResult label="Maintenance" value="-90%" sub="Potensi pengurangan watering & equalizing" /><DarkResult label="Operational Fit" value={operationalFit} sub="Berdasarkan shift dan jam operasi" /></div><div className="mt-6 rounded-[16px] bg-[#FFCC00] p-5 text-black"><b>Potensi operasional:</b> semakin tinggi jam operasi, jumlah unit, dan shift, semakin besar kebutuhan menjaga availability battery dan charging window.</div></div>
             </div>
 
             <Panel className="mt-6">
-              <Mono>EXECUTIVE REPORT INPUTS — OPTIONAL</Mono>
-              <h3 className="mt-3 text-xl font-black">Masukkan data biaya aktual perusahaan bila tersedia.</h3>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">DRRKOBE tidak mengisi biaya dengan asumsi tersembunyi. Jika kolom biaya dikosongkan, PDF tetap dibuat tetapi financial impact hanya tampil dalam bentuk jam, frekuensi, dan persentase.</p>
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <ReportField label="Nama perusahaan"><input className="drr-input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Contoh: PT ABC Indonesia" /></ReportField>
-                <ReportField label="Lokasi / site"><input className="drr-input" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="Contoh: Plant Cikarang" /></ReportField>
-                <ReportField label="Biaya downtime per jam (Rp)"><input className="drr-input" type="number" min={0} value={downtimeCostPerHour || ''} onChange={(e) => setDowntimeCostPerHour(Math.max(0, Number(e.target.value) || 0))} placeholder="0" /></ReportField>
-                <ReportField label="Maintenance Lead Acid / unit / bulan (Rp)"><input className="drr-input" type="number" min={0} value={maintenanceCostPerUnitMonth || ''} onChange={(e) => setMaintenanceCostPerUnitMonth(Math.max(0, Number(e.target.value) || 0))} placeholder="0" /></ReportField>
-                <ReportField label="Charging / listrik / unit / bulan (Rp)"><input className="drr-input" type="number" min={0} value={chargingCostPerUnitMonth || ''} onChange={(e) => setChargingCostPerUnitMonth(Math.max(0, Number(e.target.value) || 0))} placeholder="0" /></ReportField>
+              <Mono>EXECUTIVE REPORT — DATA PERUSAHAAN</Mono>
+              <h3 className="mt-3 text-xl font-black">Identitas assessment</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Nama perusahaan dan lokasi digunakan untuk personalisasi Executive Report. Keduanya tetap opsional.</p>
+              <div className="mt-5 grid gap-4 md:grid-cols-2"><ReportField label="Nama perusahaan"><input className="drr-input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Contoh: PT ABC Indonesia" /></ReportField><ReportField label="Lokasi / site"><input className="drr-input" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="Contoh: Plant Cikarang" /></ReportField></div>
+            </Panel>
+
+            <Panel className="mt-6">
+              <Mono>DATA FINANSIAL — OPSIONAL</Mono>
+              <h3 className="mt-3 text-xl font-black">Apakah Anda mengetahui biaya operasional internal?</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Tidak mengetahui biaya internal tidak menghambat diagnosis. Laporan tetap menampilkan downtime, charging exposure, maintenance, dan productivity loss tanpa membuat asumsi nominal biaya.</p>
+
+              <div className="mt-6 grid gap-3 lg:grid-cols-3">
+                <FinancialModeCard active={financialMode === 'unknown'} title="Saya tidak tahu biaya internal" description="Lanjutkan tanpa nominal biaya. Ini adalah pilihan default dan aman." badge="DISARANKAN" onClick={() => chooseFinancialMode('unknown')} />
+                <FinancialModeCard active={financialMode === 'partial'} title="Saya tahu sebagian biaya" description="Cukup isi perkiraan biaya downtime satu forklift per jam." onClick={() => chooseFinancialMode('partial')} />
+                <FinancialModeCard active={financialMode === 'full'} title="Saya memiliki data lengkap" description="Isi downtime, maintenance, dan charging/listrik bila tersedia." onClick={() => chooseFinancialMode('full')} />
+              </div>
+
+              {financialMode !== 'unknown' && (
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <ReportField label="Estimasi biaya downtime 1 forklift / jam (Rp)"><input className="drr-input" type="number" min={0} value={downtimeCostPerHour || ''} onChange={(e) => setDowntimeCostPerHour(Math.max(0, Number(e.target.value) || 0))} placeholder="Masukkan hanya jika diketahui" /></ReportField>
+                  {financialMode === 'full' && <ReportField label="Maintenance Lead Acid / unit / bulan (Rp)"><input className="drr-input" type="number" min={0} value={maintenanceCostPerUnitMonth || ''} onChange={(e) => setMaintenanceCostPerUnitMonth(Math.max(0, Number(e.target.value) || 0))} placeholder="Masukkan hanya jika diketahui" /></ReportField>}
+                  {financialMode === 'full' && <ReportField label="Charging / listrik / unit / bulan (Rp)"><input className="drr-input" type="number" min={0} value={chargingCostPerUnitMonth || ''} onChange={(e) => setChargingCostPerUnitMonth(Math.max(0, Number(e.target.value) || 0))} placeholder="Masukkan hanya jika diketahui" /></ReportField>}
+                </div>
+              )}
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1.05fr]">
+                <div className="rounded-[18px] border border-zinc-200 bg-[#FCFCF9] p-5">
+                  <Mono>OPERATIONAL IMPACT</Mono>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><KeyValue label="Downtime" value={`${downtimeHours} jam/bulan`} /><KeyValue label="Charging" value={`${chargingWaste} jam/bulan`} /><KeyValue label="Maintenance" value={`${maintenanceYear} tindakan/tahun`} /><KeyValue label="Productivity" value={`-${productivityLoss}%`} /></div>
+                </div>
                 <div className="rounded-[18px] bg-[#0A0A0A] p-5 text-white">
-                  <Mono className="text-zinc-400">FINANCIAL PREVIEW</Mono>
-                  <div className="mt-3 text-2xl font-black">{hasFinancialInputs ? formatRupiah(annualOperatingExposure) : 'Belum dihitung'}</div>
-                  <p className="mt-2 text-xs leading-5 text-zinc-400">{hasFinancialInputs ? `Annual operating exposure berdasarkan input. Scenario saving: ${formatRupiah(annualSavingScenario)} / tahun.` : 'Isi minimal satu data biaya untuk menampilkan estimasi exposure pada report.'}</p>
+                  <Mono className="text-zinc-400">FINANCIAL STATUS</Mono>
+                  <div className="mt-3 text-2xl font-black">{hasFinancialInputs ? formatRupiah(annualOperatingExposure) : 'Pending Cost Validation'}</div>
+                  <p className="mt-2 text-xs leading-5 text-zinc-400">{hasFinancialInputs ? `Estimasi annual operating exposure berdasarkan data yang Anda masukkan. Scenario saving: ${formatRupiah(annualSavingScenario)} / tahun.` : financialMode === 'unknown' ? 'Nilai finansial menunggu data cost internal perusahaan. Executive Report tetap dapat dibuat dengan dampak operasional yang sudah terukur.' : 'Masukkan biaya downtime bila tersedia. Jika tidak, pilih “Saya tidak tahu biaya internal” dan lanjutkan tanpa nominal.'}</p>
                 </div>
               </div>
-              <p className="mt-5 text-xs leading-5 text-zinc-500">Harga pembelian battery tetap tidak ditampilkan. Commercial payback baru dihitung setelah technical assessment dan commercial proposal tersedia.</p>
+              <p className="mt-5 text-xs leading-5 text-zinc-500">Harga pembelian battery tidak dimasukkan pada tahap diagnosis. Commercial payback dihitung setelah technical assessment dan commercial proposal tervalidasi.</p>
             </Panel>
 
             <Nav onBack={() => setStep(7)} onNext={() => setStep(9)} nextLabel="Lihat Rekomendasi Final" />
@@ -628,71 +561,29 @@ export default function DiagnosisFormPage() {
         {step === 9 && diagnosis && (
           <StepFrame eyebrow="STEP 9 / 9 — RECOMMENDATION" title="Rekomendasi DRRKOBE">
             <div className="grid gap-6 lg:grid-cols-[.9fr_1.3fr]">
-              <div>
-                <Panel>
-                  <span className="inline-flex rounded-full bg-red-500 px-3 py-1 text-xs font-black text-white">{health <= 65 ? 'UPGRADE LAYAK DIPERTIMBANGKAN' : 'ASSESSMENT DIREKOMENDASIKAN'} — {selectedIssues.length} MASALAH TERINDIKASI</span>
-                  <h3 className="mt-5 text-xl font-black">{selectedModel?.model_code || selectedModel?.name} • Lead Acid health {health}% • Urgensi {urgency}</h3>
-                  <p className="mt-4 text-sm leading-6 text-zinc-600">Diagnosis membaca {selectedIssues.length} masalah yang saling berkaitan pada pola operasi {shift} shift / {jamOperasi} jam per hari. Rekomendasi akhir tetap membutuhkan validasi kondisi aktual sebelum keputusan perubahan teknologi.</p>
-                  <div className="mt-6 grid grid-cols-3 gap-3">
-                    <Metric label="Confidence" value={`${confidence}%`} />
-                    <Metric label="Issues" value={`${selectedIssues.length}`} dark />
-                    <Metric label="Target" value="Li-ion" />
-                  </div>
-                </Panel>
-                <div className="mt-4 rounded-[18px] bg-[#0A0A0A] p-5 text-sm text-white"><b className="text-[#FFCC00]">Pemeriksaan berikutnya:</b> {ai?.recommended_actions?.[0] || 'Jadwalkan battery assessment on-site untuk memeriksa kapasitas aktual, charger, kondisi cell, dan duty cycle.'}</div>
-              </div>
-              <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white">
-                <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div>
-                <h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2>
-                <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan technical assessment.</p>
-                <div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left">
-                  <Mono className="text-zinc-400">DIAGNOSIS SUMMARY • DRRKOBE.COM/BIP</Mono>
-                  <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}% health`} dark /><KeyValue label="Issues" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgency" value={urgency} dark /></div>
-                </div>
-                <div className="mt-7 flex flex-wrap justify-center gap-3">
-                  <button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button>
-                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a>
-                  <button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button>
-                </div>
-                <p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Data biaya hanya digunakan bila Anda mengisinya.</p>
-              </div>
+              <div><Panel><span className="inline-flex rounded-full bg-red-500 px-3 py-1 text-xs font-black text-white">{health <= 65 ? 'UPGRADE LAYAK DIPERTIMBANGKAN' : 'ASSESSMENT DIREKOMENDASIKAN'} — {selectedIssues.length} MASALAH TERINDIKASI</span><h3 className="mt-5 text-xl font-black">{selectedModel?.model_code || selectedModel?.name} • Lead Acid health {health}% • Urgensi {urgency}</h3><p className="mt-4 text-sm leading-6 text-zinc-600">Diagnosis membaca {selectedIssues.length} masalah yang saling berkaitan pada pola operasi {shift} shift / {jamOperasi} jam per hari. Rekomendasi akhir tetap membutuhkan validasi kondisi aktual sebelum keputusan perubahan teknologi.</p><div className="mt-6 grid grid-cols-3 gap-3"><Metric label="Confidence" value={`${confidence}%`} /><Metric label="Issues" value={`${selectedIssues.length}`} dark /><Metric label="Target" value="Li-ion" /></div></Panel><div className="mt-4 rounded-[18px] bg-[#0A0A0A] p-5 text-sm text-white"><b className="text-[#FFCC00]">Pemeriksaan berikutnya:</b> {ai?.recommended_actions?.[0] || 'Jadwalkan battery assessment on-site untuk memeriksa kapasitas aktual, charger, kondisi cell, dan duty cycle.'}</div></div>
+              <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white"><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div><h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan technical assessment.</p><div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left"><Mono className="text-zinc-400">DIAGNOSIS SUMMARY • DRRKOBE.COM/BIP</Mono><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}% health`} dark /><KeyValue label="Issues" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgency" value={urgency} dark /></div></div><div className="mt-7 flex flex-wrap justify-center gap-3"><button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button><a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a><button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button></div><p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Nominal finansial hanya digunakan bila Anda benar-benar mengisinya.</p></div>
             </div>
           </StepFrame>
         )}
       </div>
-
-      <style jsx global>{`
-        .drr-input{margin-top:.5rem;width:100%;border-radius:12px;border:1px solid #d4d4d8;background:#fff;padding:.8rem 1rem;color:#0a0a0a;outline:none}.drr-input:focus{border-color:#FFCC00;box-shadow:0 0 0 3px rgba(255,204,0,.22)}
-      `}</style>
+      <style jsx global>{`.drr-input{margin-top:.5rem;width:100%;border-radius:12px;border:1px solid #d4d4d8;background:#fff;padding:.8rem 1rem;color:#0a0a0a;outline:none}.drr-input:focus{border-color:#FFCC00;box-shadow:0 0 0 3px rgba(255,204,0,.22)}`}</style>
     </main>
   );
 }
 
-function formatRupiah(value: number) {
-  return `Rp ${Math.round(value).toLocaleString('id-ID')}`;
-}
-
-function Progress({ step }: { step: number }) {
-  return <div className="border-b border-zinc-200 bg-white"><div className="mx-auto flex min-h-[54px] max-w-[1280px] items-center justify-between gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8"><div className="flex min-w-[650px] items-center">{Array.from({ length: 9 }, (_, index) => index + 1).map((number) => <div key={number} className="flex items-center"><div className={`grid h-7 w-7 place-items-center rounded-full text-xs font-black ${number <= step ? 'bg-[#0A0A0A] text-white' : 'border border-zinc-200 bg-white text-zinc-400'}`}>{number}</div>{number < 9 && <div className={`mx-2 h-px w-9 ${number < step ? 'bg-[#0A0A0A]' : 'bg-zinc-200'}`} />}</div>)}</div><div className="whitespace-nowrap text-[11px] font-semibold"><span className="font-mono text-zinc-500">DRRKOBE Diagnostic Engine</span><span className="mx-3 text-zinc-300">|</span>Step {step}/9</div></div></div>;
-}
-
-function StepFrame({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
-  return <section className="mx-auto max-w-[1160px]"><Mono>{eyebrow}</Mono><h1 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-4xl"><span className="bg-[linear-gradient(transparent_62%,rgba(255,204,0,.33)_62%)]">{title}</span></h1><div className="mt-8">{children}</div></section>;
-}
-
+function formatRupiah(value: number) { return `Rp ${Math.round(value).toLocaleString('id-ID')}`; }
+function Progress({ step }: { step: number }) { return <div className="border-b border-zinc-200 bg-white"><div className="mx-auto flex min-h-[54px] max-w-[1280px] items-center justify-between gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8"><div className="flex min-w-[650px] items-center">{Array.from({ length: 9 }, (_, index) => index + 1).map((number) => <div key={number} className="flex items-center"><div className={`grid h-7 w-7 place-items-center rounded-full text-xs font-black ${number <= step ? 'bg-[#0A0A0A] text-white' : 'border border-zinc-200 bg-white text-zinc-400'}`}>{number}</div>{number < 9 && <div className={`mx-2 h-px w-9 ${number < step ? 'bg-[#0A0A0A]' : 'bg-zinc-200'}`} />}</div>)}</div><div className="whitespace-nowrap text-[11px] font-semibold"><span className="font-mono text-zinc-500">DRRKOBE Diagnostic Engine</span><span className="mx-3 text-zinc-300">|</span>Step {step}/9</div></div></div>; }
+function StepFrame({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) { return <section className="mx-auto max-w-[1160px]"><Mono>{eyebrow}</Mono><h1 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-4xl"><span className="bg-[linear-gradient(transparent_62%,rgba(255,204,0,.33)_62%)]">{title}</span></h1><div className="mt-8">{children}</div></section>; }
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) { return <div className={`rounded-[24px] border border-zinc-200 bg-white p-6 ${className}`}>{children}</div>; }
 function Label({ children }: { children: React.ReactNode }) { return <div className="text-sm font-black">{children}</div>; }
 function ReportField({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-black text-zinc-800">{label}{children}</label>; }
 function Mono({ children, className = '' }: { children: React.ReactNode; className?: string }) { return <div className={`font-mono text-[11px] font-semibold tracking-[.12em] text-zinc-500 ${className}`}>{children}</div>; }
-
-function Nav({ onBack, onNext, error, nextLabel = 'Lanjutkan', disabled = false, yellow = false }: { onBack?: () => void; onNext: () => void; error?: string; nextLabel?: string; disabled?: boolean; yellow?: boolean }) {
-  return <div className="mt-8"><div className="flex flex-wrap items-center justify-between gap-3"><div>{onBack && <button type="button" onClick={onBack} className="rounded-full border border-zinc-200 bg-white px-5 py-3 text-sm font-bold">Kembali</button>}</div><button type="button" onClick={onNext} disabled={disabled} className={`rounded-full px-6 py-3 text-sm font-black disabled:opacity-40 ${yellow ? 'bg-[#FFCC00] text-black' : 'bg-[#0A0A0A] text-white'}`}>{nextLabel} →</button></div>{error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}</div>;
-}
-
+function Nav({ onBack, onNext, error, nextLabel = 'Lanjutkan', disabled = false, yellow = false }: { onBack?: () => void; onNext: () => void; error?: string; nextLabel?: string; disabled?: boolean; yellow?: boolean }) { return <div className="mt-8"><div className="flex flex-wrap items-center justify-between gap-3"><div>{onBack && <button type="button" onClick={onBack} className="rounded-full border border-zinc-200 bg-white px-5 py-3 text-sm font-bold">Kembali</button>}</div><button type="button" onClick={onNext} disabled={disabled} className={`rounded-full px-6 py-3 text-sm font-black disabled:opacity-40 ${yellow ? 'bg-[#FFCC00] text-black' : 'bg-[#0A0A0A] text-white'}`}>{nextLabel} →</button></div>{error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}</div>; }
+function FinancialModeCard({ active, title, description, badge, onClick }: { active: boolean; title: string; description: string; badge?: string; onClick: () => void }) { return <button type="button" onClick={onClick} className={`relative rounded-[18px] border p-5 text-left transition ${active ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white shadow-lg' : 'border-zinc-200 bg-white hover:border-zinc-400'}`}>{badge && <span className={`mb-3 inline-flex rounded-full px-2.5 py-1 text-[9px] font-black tracking-[.12em] ${active ? 'bg-[#FFCC00] text-black' : 'bg-[#FFFEF0] text-zinc-700'}`}>{badge}</span>}<div className="font-black">{title}</div><p className={`mt-2 text-xs leading-5 ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{description}</p><span className={`absolute right-4 top-4 grid h-6 w-6 place-items-center rounded-full text-xs font-black ${active ? 'bg-[#FFCC00] text-black' : 'border border-zinc-300 text-zinc-400'}`}>{active ? '✓' : ''}</span></button>; }
 function Metric({ label, value, dark = false }: { label: string; value: string; dark?: boolean }) { return <div className={`rounded-xl border p-4 ${dark ? 'border-white/10 bg-white/[0.06]' : 'border-zinc-200 bg-white'}`}><div className={`text-[10px] font-bold uppercase tracking-[.14em] ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>{label}</div><div className="mt-1 text-sm font-black">{value}</div></div>; }
 function MetricCard({ label, value, sub }: { label: string; value: string; sub: string }) { return <div className="rounded-[20px] border border-zinc-200 bg-white p-6"><Mono>{label}</Mono><div className="mt-4 text-2xl font-black">{value}</div><div className="mt-2 text-xs text-zinc-500">{sub}</div></div>; }
 function DarkResult({ label, value, sub }: { label: string; value: string; sub: string }) { return <div className="rounded-[18px] border border-white/10 bg-white/[0.06] p-6"><Mono className="text-zinc-400">{label}</Mono><div className="mt-3 text-3xl font-black">{value}</div><div className="mt-2 text-xs text-zinc-400">{sub}</div></div>; }
-
 function YesNo({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) { return <Panel><Label>{label}</Label><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => onChange(true)} className={`rounded-full border px-4 py-3 text-sm font-black ${value ? 'border-black bg-black text-white' : 'border-zinc-200'}`}>Ya</button><button type="button" onClick={() => onChange(false)} className={`rounded-full border px-4 py-3 text-sm font-black ${!value ? 'border-black bg-black text-white' : 'border-zinc-200'}`}>Tidak</button></div></Panel>; }
 function Choice({ label, value, values, onChange, suffix = '' }: { label: string; value: number; values: number[]; onChange: (value: number) => void; suffix?: string }) { return <Panel><Label>{label}</Label><div className="mt-4 flex flex-wrap gap-2">{values.map((item) => <button key={item} type="button" onClick={() => onChange(item)} className={`min-w-[58px] flex-1 rounded-full border px-3 py-3 text-sm font-black ${value === item ? 'border-black bg-black text-white' : 'border-zinc-200 bg-white'}`}>{item}{suffix}</button>)}</div></Panel>; }
 function Range({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <div><Label>{label}</Label><input className="mt-4 w-full" type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} /><div className="mt-1 flex justify-between text-[10px] text-zinc-400"><span>{min}</span><span>{max}</span></div></div>; }
