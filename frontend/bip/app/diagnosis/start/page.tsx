@@ -1,77 +1,53 @@
 import Link from 'next/link';
 
 const steps = [
-  {
-    number: '01',
-    title: 'Identifikasi Forklift',
-    description: 'Pilih brand dan model forklift yang akan dianalisis.',
-  },
-  {
-    number: '02',
-    title: 'Data Battery',
-    description: 'Masukkan tipe, usia battery, shift, dan jam operasional.',
-  },
-  {
-    number: '03',
-    title: 'Kondisi Operasional',
-    description: 'Jawab gejala utama yang terjadi pada battery dan proses charging.',
-  },
-  {
-    number: '04',
-    title: 'Hasil Diagnosis',
-    description: 'Health Score dihitung engine Laravel lalu diperkaya analisis teknis AI.',
-  },
+  'Pilih Model',
+  'Konfigurasi Lead Acid',
+  'Pilih Multi-Issue',
+  'Detail Operasional',
+  'Aggregated Diagnosis',
+  'Dampak Aggregated',
+  'Lead Acid vs Li-ion',
+  'ROI Potensi Saving',
+  'Rekomendasi DRRKOBE',
 ];
 
 export default function DiagnosisStartPage() {
   return (
-    <main className="min-h-screen px-5 py-8 md:px-10 md:py-12">
-      <div className="mx-auto max-w-6xl">
-        <header className="flex items-center justify-between gap-4">
-          <Link href="/" className="text-sm font-semibold text-slate-500 hover:text-slate-950">
-            DRRKOBE BIP
-          </Link>
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-            Technical Diagnostic
-          </span>
-        </header>
-
-        <section className="mt-12 max-w-3xl">
-          <p className="text-sm font-bold uppercase tracking-[0.22em] text-blue-700">Battery Intelligence</p>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
-            Mulai diagnosis kondisi battery forklift.
-          </h1>
-          <p className="mt-5 text-base leading-7 text-slate-600 md:text-lg">
-            Proses diagnosis menggunakan data unit dan kondisi aktual. Health Score dihitung secara deterministik dan tidak ditentukan oleh AI.
-          </p>
-        </section>
-
-        <section className="mt-10 grid gap-4 md:grid-cols-2">
-          {steps.map((step) => (
-            <article key={step.number} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="text-sm font-bold text-blue-700">{step.number}</div>
-              <h2 className="mt-3 text-xl font-bold text-slate-950">{step.title}</h2>
-              <p className="mt-2 leading-7 text-slate-600">{step.description}</p>
-            </article>
-          ))}
-        </section>
-
-        <section className="mt-8 rounded-2xl border border-slate-200 bg-slate-950 p-6 text-white md:flex md:items-center md:justify-between md:gap-8 md:p-8">
+    <main className="min-h-screen bg-[#FCFCF9] text-[#0A0A0A]">
+      <header className="border-b border-zinc-200 bg-white">
+        <div className="mx-auto flex h-[76px] max-w-[1280px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div>
-            <h2 className="text-xl font-bold">Siapkan data unit sebelum mulai</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              Minimal diperlukan brand, model forklift, tipe battery, usia battery, shift kerja, jam operasi, dan gejala utama.
-            </p>
+            <div className="flex items-center gap-2 text-2xl font-black tracking-tight">DRRKOBE <span className="bg-[#FFCC00] px-1.5 py-0.5 text-[10px]">BIP</span></div>
+            <div className="text-[8px] font-bold tracking-[.18em] text-zinc-400">DIAGNOSTIC RELIABILITY REPORTING<br/>BATTERY INTELLIGENCE PLATFORM</div>
           </div>
+          <Link href="/diagnosis/form" className="rounded-full bg-[#FFCC00] px-5 py-3 text-sm font-black">Mulai Diagnosis →</Link>
+        </div>
+      </header>
 
-          <Link
-            href="/diagnosis/form"
-            className="mt-6 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-slate-950 transition hover:bg-slate-100 md:mt-0"
-          >
-            Lanjutkan Diagnosis
-          </Link>
-        </section>
-      </div>
+      <section className="mx-auto grid max-w-[1280px] gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:py-20">
+        <div>
+          <div className="font-mono text-[11px] font-semibold tracking-[.14em] text-zinc-500">DRRKOBE DIAGNOSTIC ENGINE • 9-STEP JOURNEY</div>
+          <h1 className="mt-5 max-w-3xl text-5xl font-black tracking-[-.055em] sm:text-6xl">Diagnosis Lead Acid yang membaca masalah secara <span className="bg-[linear-gradient(transparent_62%,rgba(255,204,0,.55)_62%)]">aggregated.</span></h1>
+          <p className="mt-6 max-w-2xl text-base leading-7 text-zinc-600">Health Score dihitung deterministic engine. AI digunakan untuk memperkaya interpretasi lintas masalah tanpa mengubah skor utama.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/diagnosis/form" className="rounded-full bg-[#0A0A0A] px-7 py-4 text-sm font-black text-white">Mulai 9-Step Diagnosis →</Link>
+            <div className="rounded-full border border-zinc-200 bg-white px-5 py-4 text-sm font-bold">No Price • Technical Insight Only</div>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] bg-[#0A0A0A] p-6 text-white sm:p-8">
+          <div className="font-mono text-[11px] tracking-[.14em] text-zinc-400">DIAGNOSTIC FLOW</div>
+          <div className="mt-6 space-y-2">
+            {steps.map((label, index) => (
+              <div key={label} className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-black ${index < 4 ? 'bg-[#FFCC00] text-black' : 'bg-white/10 text-white'}`}>{index + 1}</div>
+                <div className="text-sm font-bold">{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
