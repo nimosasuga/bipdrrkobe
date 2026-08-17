@@ -27,6 +27,12 @@ export type AssessmentReportData = {
   frequentDowntime: boolean;
   chargerError: boolean;
   hydraulicSlow: boolean;
+  fastDrainDetail?: string;
+  chargingDurationDetail?: string;
+  wateringFrequencyDetail?: string;
+  downtimeFrequencyDetail?: string;
+  chargerErrorDetail?: string;
+  hydraulicDetail?: string;
   issues: string[];
   healthScore: number;
   healthCategory: string;
@@ -89,6 +95,14 @@ function yesNo(value: boolean): string {
 function safe(value: string | null | undefined, fallback = '-'): string {
   const cleaned = value?.trim();
   return cleaned ? cleaned : fallback;
+}
+
+function isExplicitlyUnknown(value: string | null | undefined): boolean {
+  return value?.trim().toLowerCase() === 'tidak tahu';
+}
+
+function detailOrFallback(value: string | undefined, fallback: string): string {
+  return safe(value, fallback);
 }
 
 function filenamePart(value: string): string {
@@ -520,15 +534,12 @@ function executiveNarrative(data: AssessmentReportData): string {
 }
 
 function fieldNarrative(data: AssessmentReportData): string {
-  const clues: string[] = [];
-  if (data.fastDrain) clues.push('daya tidak bertahan satu shift');
-  if (data.longCharging) clues.push('pengisian daya membutuhkan lebih dari 8 jam');
-  if (data.frequentDowntime) clues.push('waktu henti terjadi lebih dari dua kali per bulan');
-  if (data.chargerError) clues.push('charger pernah menampilkan kode gangguan');
-  if (data.hydraulicSlow) clues.push('gerakan hydraulic melambat ketika battery rendah');
+  const batteryDuration = detailOrFallback(data.fastDrainDetail, data.fastDrain ? '< 4 jam' : 'tidak terindikasi cepat habis');
+  const chargingDuration = detailOrFallback(data.chargingDurationDetail, data.longCharging ? '> 8 jam' : 'tidak lebih dari 8 jam');
+  const watering = detailOrFallback(data.wateringFrequencyDetail, `${data.wateringPerWeek}x per minggu`);
+  const downtime = detailOrFallback(data.downtimeFrequencyDetail, data.frequentDowntime ? '> 2x per bulan' : 'tidak lebih dari 2x per bulan');
 
-  const finding = clues.length ? clues.join(', ') : 'tidak ada gejala tambahan yang dilaporkan';
-  return `Unit beroperasi ${data.shift} shift dengan perkiraan ${data.operatingHoursPerDay} jam per hari. Battery berumur ${data.batteryAgeYears} tahun dan membutuhkan isi air sekitar ${data.wateringPerWeek} kali per minggu. Kondisi yang paling terasa di lapangan adalah ${finding}. Rangkuman ini menjadi dasar pemeriksaan awal dan perlu dikonfirmasi saat pengecekan langsung.`;
+  return `Unit beroperasi ${data.shift} shift dengan perkiraan ${data.operatingHoursPerDay} jam per hari dan battery berumur ${data.batteryAgeYears} tahun. Daya battery dilaporkan bertahan ${batteryDuration}, durasi pengisian ${chargingDuration}, pemeriksaan atau isi air ${watering}, dan frekuensi unit berhenti karena battery/pengisian ${downtime}. Data yang belum diketahui tidak dianggap sebagai fakta dan perlu dilengkapi saat pemeriksaan lapangan.`;
 }
 
 function decisionStatement(data: AssessmentReportData): string {
@@ -572,9 +583,13 @@ function drawFooterDisclaimer(doc: jsPDF, diagnosisId: string) {
 export function downloadAssessmentPdf(data: AssessmentReportData) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
 
-  const monthlyDowntimeCost = (data.downtimeCostPerHour || 0) * data.downtimeHoursPerMonth * data.fleetSize;
-  const monthlyMaintenanceCost = (data.maintenanceCostPerUnitMonth || 0) * data.fleetSize;
-  const monthlyChargingCost = (data.chargingCostPerUnitMonth || 0) * data.fleetSize;
+  const downtimeKnown = !isExplicitlyUnknown(data.downtimeFrequencyDetail);
+  const chargingKnown = !isExplicitlyUnknown(data.chargingDurationDetail);
+  const wateringKnown = !isExplicitlyUnknown(data.wateringFrequencyDetail);
+
+  const monthlyDowntimeCost = downtimeKnown ? (data.downtimeCostPerHour || 0) * data.downtimeHoursPerMonth * data.fleetSize : 0;
+  const monthlyMaintenanceCost = wateringKnown ? (data.maintenanceCostPerUnitMonth || 0) * data.fleetSize : 0;
+  const monthlyChargingCost = chargingKnown ? (data.chargingCostPerUnitMonth || 0) * data.fleetSize : 0;
   const annualOperatingCost = (monthlyDowntimeCost + monthlyMaintenanceCost + monthlyChargingCost) * 12;
   const annualSavingScenario = (
     monthlyDowntimeCost * (data.downtimeReductionPercent / 100) +
@@ -611,34 +626,8 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setTextColor(...MID_GREY);
   doc.text('Disiapkan untuk', MARGIN + 9, 84);
 
-  drawFittedBlock(
-    doc,
-    safe(data.companyName, 'Nama perusahaan belum diisi'),
-    MARGIN + 9,
-    92,
-    91,
-    13,
-    2,
-    8.5,
-    WHITE,
-    5,
-    'bold',
-  );
-
-  drawFittedBlock(
-    doc,
-    `${safe(data.siteName, 'Lokasi belum diisi')} - ${reportDate}`,
-    SAFE_RIGHT - 9,
-    92,
-    66,
-    7.2,
-    2,
-    5.6,
-    MID_GREY,
-    4,
-    'normal',
-    'right',
-  );
+  drawFittedBlock(doc, safe(data.companyName, 'Nama perusahaan belum diisi'), MARGIN + 9, 92, 91, 13, 2, 8.5, WHITE, 5, 'bold');
+  drawFittedBlock(doc, `${safe(data.siteName, 'Lokasi belum diisi')} - ${reportDate}`, SAFE_RIGHT - 9, 92, 66, 7.2, 2, 5.6, MID_GREY, 4, 'normal', 'right');
 
   drawGauge(doc, 46, 138, data.healthScore);
 
@@ -667,29 +656,12 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   y = quoteCard(doc, decisionStatement(data), cardsY + 49, true);
 
   if (y <= 253) {
-    drawFittedBlock(
-      doc,
-      'Disusun dengan prinsip keterlacakan: data, temuan, dampak, risiko, rekomendasi, dan verifikasi.',
-      MARGIN,
-      y + 6,
-      CONTENT_W,
-      6.1,
-      2,
-      5.2,
-      GREY,
-      3.6,
-      'normal',
-    );
+    drawFittedBlock(doc, 'Disusun dengan prinsip keterlacakan: data, temuan, dampak, risiko, rekomendasi, dan verifikasi.', MARGIN, y + 6, CONTENT_W, 6.1, 2, 5.2, GREY, 3.6, 'normal');
   }
 
   // 2. DATA & KONDISI LAPANGAN
   newPage(doc, 2, 'Data & Kondisi Lapangan');
-  y = sectionTitle(
-    doc,
-    '01 / Fakta yang digunakan',
-    'Apa yang terjadi di lapangan?',
-    'Rangkuman ini menunjukkan kondisi unit, pola kerja, dan keluhan yang dilaporkan oleh pengguna sebagai dasar penilaian.',
-  );
+  y = sectionTitle(doc, '01 / Fakta yang digunakan', 'Apa yang terjadi di lapangan?', 'Rangkuman ini menunjukkan kondisi unit, pola kerja, dan keluhan yang dilaporkan oleh pengguna sebagai dasar penilaian.');
 
   doc.setFillColor(...WHITE);
   doc.setDrawColor(...LIGHT);
@@ -699,7 +671,7 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   labelValue(doc, 'Battery Saat Ini', `${data.batteryType} - ${data.voltage} - ${data.capacity}`, MARGIN + 6, y + 33, 76);
   labelValue(doc, 'Pola Kerja', `${data.shift} shift - ${data.operatingHoursPerDay} jam/hari`, 110, y + 33, 76);
   labelValue(doc, 'Umur Battery', `${data.batteryAgeYears} tahun`, MARGIN + 6, y + 52, 76);
-  labelValue(doc, 'Isi Air Battery', `${data.wateringPerWeek}x per minggu`, 110, y + 52, 76);
+  labelValue(doc, 'Isi Air Battery', detailOrFallback(data.wateringFrequencyDetail, `${data.wateringPerWeek}x per minggu`), 110, y + 52, 76);
 
   y += 77;
   y = quoteCard(doc, fieldNarrative(data), y, false) + 11;
@@ -710,15 +682,15 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.text('Keluhan utama', MARGIN, y);
   bulletList(doc, data.issues, MARGIN, y + 10, 80, 8, 7.7, 4.0);
 
-  doc.text('Kondisi yang dikonfirmasi', 110, y);
+  doc.text('Kondisi yang dilaporkan', 110, y);
   bulletList(
     doc,
     [
-      `Daya battery habis dalam satu shift: ${yesNo(data.fastDrain)}`,
-      `Pengisian daya lebih dari 8 jam: ${yesNo(data.longCharging)}`,
-      `Waktu henti lebih dari dua kali per bulan: ${yesNo(data.frequentDowntime)}`,
-      `Charger pernah menampilkan kode gangguan: ${yesNo(data.chargerError)}`,
-      `Hydraulic melambat saat daya battery rendah: ${yesNo(data.hydraulicSlow)}`,
+      `Daya battery bertahan: ${detailOrFallback(data.fastDrainDetail, yesNo(!data.fastDrain))}`,
+      `Durasi pengisian: ${detailOrFallback(data.chargingDurationDetail, data.longCharging ? '> 8 jam' : '≤ 8 jam')}`,
+      `Unit berhenti karena battery/pengisian: ${detailOrFallback(data.downtimeFrequencyDetail, data.frequentDowntime ? '> 2x per bulan' : '≤ 2x per bulan')}`,
+      `Gangguan pada charger: ${detailOrFallback(data.chargerErrorDetail, yesNo(data.chargerError))}`,
+      `Gerakan angkat saat daya rendah: ${detailOrFallback(data.hydraulicDetail, yesNo(data.hydraulicSlow))}`,
     ],
     110,
     y + 10,
@@ -730,12 +702,7 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
 
   // 3. KONDISI BATTERY & PENYEBAB
   newPage(doc, 3, 'Kondisi Battery');
-  y = sectionTitle(
-    doc,
-    '02 / Temuan utama',
-    'Apa yang paling mungkin memengaruhi performa?',
-    'Persentase menunjukkan tingkat keyakinan terhadap kemungkinan penyebab berdasarkan data yang tersedia. Nilai ini perlu dibuktikan melalui pemeriksaan aktual.',
-  );
+  y = sectionTitle(doc, '02 / Temuan utama', 'Apa yang paling mungkin memengaruhi performa?', 'Persentase menunjukkan tingkat keyakinan terhadap kemungkinan penyebab berdasarkan data yang tersedia. Nilai ini perlu dibuktikan melalui pemeriksaan aktual.');
 
   drawGauge(doc, 48, y + 31, data.healthScore);
   doc.setFont('helvetica', 'bold');
@@ -743,19 +710,7 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setTextColor(...MID_GREY);
   doc.text('KONDISI SAAT INI', 85, y + 8);
 
-  drawFittedBlock(
-    doc,
-    `${conditionLabel(data.healthScore)} - Skor Kondisi ${data.healthScore}%`,
-    85,
-    y + 20,
-    102,
-    15.5,
-    2,
-    10.5,
-    BLACK,
-    6.4,
-    'bold',
-  );
+  drawFittedBlock(doc, `${conditionLabel(data.healthScore)} - Skor Kondisi ${data.healthScore}%`, 85, y + 20, 102, 15.5, 2, 10.5, BLACK, 6.4, 'bold');
   paragraph(doc, executiveNarrative(data), 85, y + 34, 102, 8.1, GREY, 4.4, 7);
 
   y += 72;
@@ -784,25 +739,15 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
 
   // 4. DAMPAK TERHADAP OPERASI
   newPage(doc, 4, 'Dampak Terhadap Operasi');
-  y = sectionTitle(
-    doc,
-    '03 / Dampak kerja sehari-hari',
-    'Di mana gangguan battery mulai terasa?',
-    'Nilai di bawah membantu melihat waktu yang hilang, beban perawatan, dan pengaruhnya terhadap kesiapan forklift untuk bekerja.',
-  );
+  y = sectionTitle(doc, '03 / Dampak kerja sehari-hari', 'Di mana gangguan battery mulai terasa?', 'Nilai di bawah membantu melihat waktu yang hilang, beban perawatan, dan pengaruhnya terhadap kesiapan forklift untuk bekerja.');
 
-  metricCard(doc, MARGIN, y, 40, 'Waktu henti', `${data.downtimeHoursPerMonth} jam/bln`, 'Perkiraan unit tidak produktif');
-  metricCard(doc, MARGIN + 45, y, 40, 'Pengisian daya', `${data.chargingExposureHoursPerMonth} jam/bln`, 'Waktu terserap untuk pengisian');
-  metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', `${data.maintenanceActionsPerYear}x/thn`, 'Isi air dan pemeriksaan rutin');
-  metricCard(doc, MARGIN + 135, y, 39, 'Produktivitas', `-${data.productivityLossPercent}%`, 'Terhadap jam operasi tersedia');
+  metricCard(doc, MARGIN, y, 40, 'Waktu henti', downtimeKnown ? `${data.downtimeHoursPerMonth} jam/bln` : 'Belum diketahui', downtimeKnown ? 'Perkiraan unit tidak produktif' : 'Perlu data frekuensi waktu henti');
+  metricCard(doc, MARGIN + 45, y, 40, 'Pengisian daya', chargingKnown ? `${data.chargingExposureHoursPerMonth} jam/bln` : 'Belum diketahui', chargingKnown ? 'Waktu terserap untuk pengisian' : 'Perlu data durasi pengisian');
+  metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', wateringKnown ? `${data.maintenanceActionsPerYear}x/thn` : 'Belum diketahui', wateringKnown ? 'Isi air dan pemeriksaan rutin' : 'Perlu data isi air battery');
+  metricCard(doc, MARGIN + 135, y, 39, 'Produktivitas', downtimeKnown ? `-${data.productivityLossPercent}%` : 'Belum diketahui', downtimeKnown ? 'Terhadap jam operasi tersedia' : 'Menunggu data waktu henti');
 
   y += 53;
-  y = quoteCard(
-    doc,
-    `Pada armada ${data.fleetSize} unit dengan pola sekitar ${data.simulationHoursPerDay} jam operasi dan ${data.simulationShift} shift, waktu henti, pengisian daya, dan perawatan saling memengaruhi kesiapan unit. Karena itu, keputusan battery perlu dilihat sebagai bagian dari keputusan operasi, bukan sekadar penggantian komponen.`,
-    y,
-    true,
-  ) + 12;
+  y = quoteCard(doc, `Pada armada ${data.fleetSize} unit dengan pola sekitar ${data.simulationHoursPerDay} jam operasi dan ${data.simulationShift} shift, waktu henti, pengisian daya, dan perawatan saling memengaruhi kesiapan unit. Karena itu, keputusan battery perlu dilihat sebagai bagian dari keputusan operasi, bukan sekadar penggantian komponen.`, y, true) + 12;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -811,9 +756,9 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   bulletList(
     doc,
     [
-      data.frequentDowntime ? 'Waktu henti sudah perlu dikendalikan sebagai masalah operasi, bukan kejadian insidental.' : 'Waktu henti belum menjadi keluhan utama, tetapi tetap perlu dipantau.',
-      data.longCharging ? 'Pengisian daya lebih dari 8 jam mempersempit waktu unit tersedia untuk bekerja.' : 'Durasi pengisian daya belum menjadi keluhan utama pada sesi ini.',
-      data.wateringPerWeek >= 2 ? `Isi air battery ${data.wateringPerWeek}x per minggu menambah pekerjaan perawatan rutin.` : 'Frekuensi isi air battery masih relatif rendah berdasarkan data yang diisi.',
+      `Frekuensi unit berhenti karena battery/pengisian: ${detailOrFallback(data.downtimeFrequencyDetail, data.frequentDowntime ? '> 2x per bulan' : '≤ 2x per bulan')}.`,
+      `Durasi pengisian yang dilaporkan: ${detailOrFallback(data.chargingDurationDetail, data.longCharging ? '> 8 jam' : '≤ 8 jam')}.`,
+      `Pemeriksaan atau isi air battery: ${detailOrFallback(data.wateringFrequencyDetail, `${data.wateringPerWeek}x per minggu`)}.`,
       data.simulationShift >= 2 ? 'Operasi multi-shift membutuhkan battery dan waktu pengisian yang lebih konsisten.' : 'Operasi satu shift memberi waktu pengisian yang lebih longgar dibanding operasi multi-shift.',
     ],
     MARGIN,
@@ -826,17 +771,12 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
 
   // 5. DAMPAK BIAYA
   newPage(doc, 5, 'Dampak Biaya');
-  y = sectionTitle(
-    doc,
-    '04 / Nilai gangguan bagi perusahaan',
-    'Berapa besar potensi beban biayanya?',
-    'Nominal hanya dihitung dari data biaya yang diberikan perusahaan. Bila biaya internal belum diketahui, laporan tidak membuat asumsi Rupiah.',
-  );
+  y = sectionTitle(doc, '04 / Nilai gangguan bagi perusahaan', 'Berapa besar potensi beban biayanya?', 'Nominal hanya dihitung dari data biaya yang diberikan perusahaan. Bila biaya internal atau data operasi belum diketahui, laporan tidak membuat asumsi Rupiah.');
 
   if (monetaryInputsAvailable) {
-    metricCard(doc, MARGIN, y, 54, 'Waktu henti / bulan', rupiah(monthlyDowntimeCost), `${data.fleetSize} unit x ${data.downtimeHoursPerMonth} jam`);
-    metricCard(doc, MARGIN + 60, y, 54, 'Perawatan / bulan', rupiah(monthlyMaintenanceCost), 'Berdasarkan data perusahaan');
-    metricCard(doc, MARGIN + 120, y, 54, 'Pengisian / bulan', rupiah(monthlyChargingCost), 'Berdasarkan data perusahaan');
+    metricCard(doc, MARGIN, y, 54, 'Waktu henti / bulan', downtimeKnown ? rupiah(monthlyDowntimeCost) : 'Belum diketahui', downtimeKnown ? `${data.fleetSize} unit x ${data.downtimeHoursPerMonth} jam` : 'Menunggu data waktu henti');
+    metricCard(doc, MARGIN + 60, y, 54, 'Perawatan / bulan', wateringKnown ? rupiah(monthlyMaintenanceCost) : 'Belum diketahui', wateringKnown ? 'Berdasarkan data perusahaan' : 'Menunggu data perawatan');
+    metricCard(doc, MARGIN + 120, y, 54, 'Pengisian / bulan', chargingKnown ? rupiah(monthlyChargingCost) : 'Belum diketahui', chargingKnown ? 'Berdasarkan data perusahaan' : 'Menunggu data pengisian');
 
     y += 53;
     doc.setFillColor(...BLACK);
@@ -851,26 +791,14 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...MID_GREY);
-    doc.text('berdasarkan angka biaya yang diberikan perusahaan', MARGIN + 8, y + 41);
+    doc.text('berdasarkan data biaya dan data operasi yang tersedia', MARGIN + 8, y + 41);
 
     doc.setFillColor(...YELLOW);
     doc.roundedRect(MARGIN + 8, y + 48, CONTENT_W - 16, 11, 2, 2, 'F');
-    drawFittedBlock(
-      doc,
-      `Skenario potensi pengurangan beban: ${rupiah(annualSavingScenario)} / tahun`,
-      MARGIN + 13,
-      y + 55,
-      CONTENT_W - 28,
-      7.8,
-      2,
-      6.0,
-      BLACK,
-      4,
-      'bold',
-    );
+    drawFittedBlock(doc, `Skenario potensi pengurangan beban: ${rupiah(annualSavingScenario)} / tahun`, MARGIN + 13, y + 55, CONTENT_W - 28, 7.8, 2, 6.0, BLACK, 4, 'bold');
 
     y += 80;
-    quoteCard(doc, 'Angka ini bukan harga battery dan bukan penawaran komersial. Nilainya digunakan untuk memahami besarnya beban operasi yang mungkin dapat dikurangi.', y, false);
+    quoteCard(doc, 'Angka ini bukan harga battery dan bukan penawaran komersial. Nilainya hanya menggunakan data yang tersedia dan tidak mengisi bagian yang belum diketahui dengan asumsi tersembunyi.', y, false);
   } else {
     doc.setFillColor(...BLACK);
     doc.roundedRect(MARGIN, y, CONTENT_W, 74, 5, 5, 'F');
@@ -880,47 +808,19 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
     doc.text('STATUS DATA BIAYA', MARGIN + 8, y + 13);
 
     drawFittedBlock(doc, 'Menunggu data biaya perusahaan', MARGIN + 8, y + 29, CONTENT_W - 16, 19, 2, 12, WHITE, 7.3, 'bold');
-    paragraph(
-      doc,
-      'Tidak mengetahui biaya internal bukan masalah. Dampak operasi tetap dapat dibaca dari waktu henti, waktu pengisian daya, pekerjaan perawatan, dan kehilangan produktivitas. Nilai Rupiah baru dihitung setelah data biaya perusahaan tersedia.',
-      MARGIN + 8,
-      y + 44,
-      CONTENT_W - 16,
-      8.1,
-      MID_GREY,
-      4.4,
-      5,
-    );
+    paragraph(doc, 'Tidak mengetahui biaya internal bukan masalah. Dampak operasi tetap dapat dibaca dari data yang tersedia. Nilai Rupiah baru dihitung setelah data biaya dan data operasi yang diperlukan tersedia.', MARGIN + 8, y + 44, CONTENT_W - 16, 8.1, MID_GREY, 4.4, 5);
 
     y += 90;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...BLACK);
     doc.text('Data yang diperlukan untuk menghitung nilai finansial', MARGIN, y);
-    bulletList(
-      doc,
-      [
-        'Perkiraan kerugian atau biaya saat satu forklift berhenti selama satu jam.',
-        'Biaya perawatan Lead Acid per unit per bulan, bila tersedia.',
-        'Biaya listrik untuk pengisian battery per unit per bulan, bila tersedia.',
-      ],
-      MARGIN,
-      y + 11,
-      CONTENT_W,
-      5,
-      7.8,
-      4.0,
-    );
+    bulletList(doc, ['Perkiraan kerugian atau biaya saat satu forklift berhenti selama satu jam.', 'Biaya perawatan Lead Acid per unit per bulan, bila tersedia.', 'Biaya listrik untuk pengisian battery per unit per bulan, bila tersedia.', 'Frekuensi waktu henti, durasi pengisian, dan pola perawatan yang benar-benar terjadi.'], MARGIN, y + 11, CONTENT_W, 5, 7.8, 4.0);
   }
 
   // 6. PERBANDINGAN TEKNOLOGI
   newPage(doc, 6, 'Perbandingan Teknologi');
-  y = sectionTitle(
-    doc,
-    '05 / Lead Acid dan Lithium-ion',
-    'Apa yang berubah bila teknologinya berbeda?',
-    'Perbandingan ini digunakan untuk memahami konsekuensi terhadap cara kerja. Harga battery tidak ditampilkan pada tahap penilaian.',
-  );
+  y = sectionTitle(doc, '05 / Lead Acid dan Lithium-ion', 'Apa yang berubah bila teknologinya berbeda?', 'Perbandingan ini digunakan untuk memahami konsekuensi terhadap cara kerja. Harga battery tidak ditampilkan pada tahap penilaian.');
 
   const rows = [
     ['Waktu pengisian', '8-12 jam, kemudian masa pendinginan', 'Sekitar 1,5-2,5 jam; dapat diisi saat jeda operasi'],
@@ -977,22 +877,12 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   }
 
   if (tableY < 229) {
-    quoteCard(
-      doc,
-      'Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan. Kelayakannya bergantung pada pola kerja unit, charger, konektor, ruang battery, temperatur, jumlah shift, dan target kesiapan unit.',
-      tableY + 9,
-      true,
-    );
+    quoteCard(doc, 'Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan. Kelayakannya bergantung pada pola kerja unit, charger, konektor, ruang battery, temperatur, jumlah shift, dan target kesiapan unit.', tableY + 9, true);
   }
 
   // 7. DASAR KEPUTUSAN INVESTASI
   newPage(doc, 7, 'Dasar Keputusan Investasi');
-  y = sectionTitle(
-    doc,
-    '06 / Potensi perbaikan',
-    'Apa yang mungkin diperoleh bila pola operasi diperbaiki?',
-    'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data operasi dan pemeriksaan lapangan.',
-  );
+  y = sectionTitle(doc, '06 / Potensi perbaikan', 'Apa yang mungkin diperoleh bila pola operasi diperbaiki?', 'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data operasi dan pemeriksaan lapangan.');
 
   metricCard(doc, MARGIN, y, 40, 'Waktu henti', `-${data.downtimeReductionPercent}%`, 'Potensi pengurangan');
   metricCard(doc, MARGIN + 45, y, 40, 'Efisiensi energi', `+${data.energyEfficiencyPercent}%`, 'Potensi peningkatan');
@@ -1000,45 +890,24 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   metricCard(doc, MARGIN + 135, y, 39, 'Kesesuaian', cleanClientText(data.operationalFit) || '-', 'Terhadap shift & jam operasi');
 
   y += 53;
-  y = quoteCard(
-    doc,
-    `Pada armada ${data.fleetSize} unit, operasi ${data.simulationShift} shift dan sekitar ${data.simulationHoursPerDay} jam per hari, manfaat utama dari teknologi battery yang lebih sesuai adalah menjaga forklift tersedia ketika dibutuhkan. Dasar keputusan investasi sebaiknya menghubungkan teknologi dengan kesiapan unit, waktu pengisian, perawatan, dan produktivitas.`,
-    y,
-    true,
-  ) + 12;
+  y = quoteCard(doc, `Pada armada ${data.fleetSize} unit, operasi ${data.simulationShift} shift dan sekitar ${data.simulationHoursPerDay} jam per hari, manfaat utama dari teknologi battery yang lebih sesuai adalah menjaga forklift tersedia ketika dibutuhkan. Dasar keputusan investasi sebaiknya menghubungkan teknologi dengan kesiapan unit, waktu pengisian, perawatan, dan produktivitas.`, y, true) + 12;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.6);
   doc.setTextColor(...BLACK);
   doc.text('Pertanyaan yang perlu dijawab sebelum keputusan investasi', MARGIN, y);
-  bulletList(
-    doc,
-    [
-      'Berapa jam forklift benar-benar dibutuhkan setiap hari dan pada setiap shift?',
-      'Apakah waktu pengisian saat ini mengurangi kesiapan unit?',
-      'Berapa kali unit berhenti karena battery atau charger dalam satu bulan?',
-      'Apakah tersedia waktu istirahat yang dapat digunakan untuk pengisian daya?',
-      'Apakah charger, konektor, dan ruang battery mendukung perubahan teknologi?',
-      monetaryInputsAvailable
-        ? `Apakah potensi pengurangan beban sekitar ${rupiah(annualSavingScenario)} per tahun cukup signifikan untuk dilanjutkan ke evaluasi investasi?`
-        : 'Berapa biaya waktu henti per jam agar nilai finansial dapat dihitung menggunakan data perusahaan sendiri?',
-    ],
-    MARGIN,
-    y + 11,
-    CONTENT_W,
-    6,
-    7.6,
-    3.9,
-  );
+  bulletList(doc, [
+    'Berapa jam forklift benar-benar dibutuhkan setiap hari dan pada setiap shift?',
+    'Apakah waktu pengisian saat ini mengurangi kesiapan unit?',
+    'Berapa kali unit berhenti karena battery atau charger dalam satu bulan?',
+    'Apakah tersedia waktu istirahat yang dapat digunakan untuk pengisian daya?',
+    'Apakah charger, konektor, dan ruang battery mendukung perubahan teknologi?',
+    monetaryInputsAvailable ? `Apakah potensi pengurangan beban sekitar ${rupiah(annualSavingScenario)} per tahun cukup signifikan untuk dilanjutkan ke evaluasi investasi?` : 'Berapa biaya waktu henti per jam agar nilai finansial dapat dihitung menggunakan data perusahaan sendiri?',
+  ], MARGIN, y + 11, CONTENT_W, 6, 7.6, 3.9);
 
   // 8. REKOMENDASI & VERIFIKASI
   newPage(doc, 8, 'Rekomendasi & Verifikasi');
-  y = sectionTitle(
-    doc,
-    '07 / Langkah berikutnya',
-    'Apa yang sebaiknya dilakukan setelah laporan ini?',
-    'Keputusan battery sebaiknya didasarkan pada kondisi unit, kebutuhan kerja, keselamatan, dan data yang dapat diverifikasi.',
-  );
+  y = sectionTitle(doc, '07 / Langkah berikutnya', 'Apa yang sebaiknya dilakukan setelah laporan ini?', 'Keputusan battery sebaiknya didasarkan pada kondisi unit, kebutuhan kerja, keselamatan, dan data yang dapat diverifikasi.');
 
   doc.setFillColor(...BLACK);
   doc.roundedRect(MARGIN, y, CONTENT_W, 71, 5, 5, 'F');
@@ -1047,9 +916,7 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setTextColor(...MID_GREY);
   doc.text('REKOMENDASI DRRKOBE', MARGIN + 8, y + 13);
 
-  const recommendationHeadline = data.healthScore <= 65
-    ? 'Lanjutkan ke Pemeriksaan Teknis Lapangan'
-    : 'Pertahankan Pemantauan & Verifikasi Berkala';
+  const recommendationHeadline = data.healthScore <= 65 ? 'Lanjutkan ke Pemeriksaan Teknis Lapangan' : 'Pertahankan Pemantauan & Verifikasi Berkala';
   drawFittedBlock(doc, recommendationHeadline, MARGIN + 8, y + 29, CONTENT_W - 18, 19, 2, 11.5, WHITE, 7.2, 'bold');
   drawFittedBlock(doc, decisionStatement(data), MARGIN + 8, y + 45, CONTENT_W - 18, 8.5, 4, 6.9, MID_GREY, 4.4, 'normal');
 
@@ -1058,23 +925,14 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setFontSize(9.8);
   doc.setTextColor(...BLACK);
   doc.text('Yang perlu diperiksa di lokasi', MARGIN, y);
-  y = bulletList(
-    doc,
-    [
-      'Ukur kapasitas aktual battery dan bandingkan dengan kebutuhan kerja unit.',
-      'Periksa kondisi sel, terminal, konektor, kabel, dan temperatur kerja.',
-      'Validasi charger: tegangan, arus, pola pengisian, riwayat gangguan, dan waktu pengisian yang tersedia.',
-      'Konfirmasi dimensi ruang battery, berat minimum, konektor, dan kebutuhan counterweight.',
-      'Catat pola shift, jam operasi, waktu istirahat, dan waktu henti aktual selama beberapa hari operasi.',
-      'Jika Lithium-ion akan dievaluasi, pastikan kompatibilitas charger, Battery Management System (BMS), konektor, dan prosedur keselamatan.',
-    ],
-    MARGIN,
-    y + 11,
-    CONTENT_W,
-    6,
-    7.2,
-    3.7,
-  );
+  y = bulletList(doc, [
+    'Ukur kapasitas aktual battery dan bandingkan dengan kebutuhan kerja unit.',
+    'Periksa kondisi sel, terminal, konektor, kabel, dan temperatur kerja.',
+    'Validasi charger: tegangan, arus, pola pengisian, riwayat gangguan, dan waktu pengisian yang tersedia.',
+    'Konfirmasi dimensi ruang battery, berat minimum, konektor, dan kebutuhan counterweight.',
+    'Catat pola shift, jam operasi, waktu istirahat, dan waktu henti aktual selama beberapa hari operasi.',
+    'Jika Lithium-ion akan dievaluasi, pastikan kompatibilitas charger, Battery Management System (BMS), konektor, dan prosedur keselamatan.',
+  ], MARGIN, y + 11, CONTENT_W, 6, 7.2, 3.7);
 
   if (safeActions.length && y < 207) {
     doc.setFont('helvetica', 'bold');
@@ -1091,19 +949,7 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
   doc.text('Langkah berikutnya', MARGIN + 7, closingY + 10);
-  drawFittedBlock(
-    doc,
-    'Jadwalkan pemeriksaan teknis bersama DRRKOBE untuk memvalidasi kondisi aktual dan menentukan pilihan yang paling sesuai dengan kebutuhan operasi perusahaan.',
-    MARGIN + 7,
-    closingY + 19,
-    CONTENT_W - 16,
-    7.8,
-    3,
-    6.3,
-    BLACK,
-    4.0,
-    'normal',
-  );
+  drawFittedBlock(doc, 'Jadwalkan pemeriksaan teknis bersama DRRKOBE untuk memvalidasi kondisi aktual dan menentukan pilihan yang paling sesuai dengan kebutuhan operasi perusahaan.', MARGIN + 7, closingY + 19, CONTENT_W - 16, 7.8, 3, 6.3, BLACK, 4.0, 'normal');
 
   drawFooterDisclaimer(doc, data.diagnosisId);
 
