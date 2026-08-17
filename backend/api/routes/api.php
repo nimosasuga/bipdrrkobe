@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AiDiagnosticController;
 use App\Http\Controllers\Api\V1\DiagnosisController;
+use App\Http\Controllers\Api\V1\LeadController;
 use App\Http\Controllers\Api\V1\MasterDataController;
 use App\Http\Controllers\Api\V1\SyncController;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,11 @@ Route::prefix('v1')->group(function () {
     Route::get('/diagnosis/{diagnosis}/result', [
         DiagnosisController::class,
         'result',
+    ]);
+
+    Route::post('/leads', [
+        LeadController::class,
+        'store',
     ]);
 
     Route::get('/ai/diagnosis/{diagnosis}/context', [
