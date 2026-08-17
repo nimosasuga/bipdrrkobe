@@ -68,6 +68,11 @@ class LeadController extends Controller
         );
 
         $sheetStatus = $this->syncToSpreadsheet($lead, $diagnosis, $issues);
+
+        if ($lead->qualification_status !== 'qualified') {
+            $this->triggerQualification($lead, $diagnosis, $answers, $issues);
+        }
+
         $lead->refresh();
 
         return response()->json([
@@ -77,6 +82,95 @@ class LeadController extends Controller
             'spreadsheet_sync_status' => $sheetStatus,
             'message' => 'Data assessment berhasil disimpan.',
         ], 201);
+    }
+
+    public function qualification(Request $request, Lead $lead): JsonResponse
+    {
+        if ($response = $this->authorizeN8n($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'lead_score' => ['required', 'in:hot,warm,monitor'],
+            'reason' => ['required', 'string', 'max:500'],
+            'version' => ['required', 'string', 'max:50'],
+        ]);
+
+        $lead->forceFill([
+            'lead_score' => $validated['lead_score'],
+            'qualification_status' => 'qualified',
+            'qualification_version' => $validated['version'],
+            'qualification_reason' => trim($validated['reason']),
+            'qualified_at' => now(),
+            'qualification_error' => null,
+        ])->save();
+
+        return response()->json([
+            'success' => true,
+            'lead_id' => $lead->id,
+            'lead_score' => $lead->lead_score,
+            'qualification_status' => $lead->qualification_status,
+        ]);
+    }
+
+    private function triggerQualification(Lead $lead, Diagnosis $diagnosis, array $answers, array $issues): void
+    {
+        $url = config('services.n8n.lead_qualification_url');
+
+        if (!$url) {
+            $lead->forceFill([
+                'qualification_status' => 'pending',
+                'qualification_error' => null,
+            ])->save();
+
+            return;
+        }
+
+        $fastDrainHigh = ($answers['cepat_habis'] ?? null) === true
+            || ($answers['fast_drain_duration'] ?? null) === 'under_4';
+
+        $downtimeHigh = ($answers['downtime'] ?? null) === true
+            || in_array($answers['downtime_frequency'] ?? null, ['three_four', 'five_plus'], true);
+
+        $payload = [
+            'lead_id' => $lead->id,
+            'diagnosis_id' => $diagnosis->id,
+            'health_score' => $diagnosis->health_score,
+            'shift_per_day' => $diagnosis->shift,
+            'multi_shift' => (int) $diagnosis->shift >= 2,
+            'fast_drain_high' => $fastDrainHigh,
+            'downtime_high' => $downtimeHigh,
+            'jumlah_forklift' => $lead->jumlah_forklift,
+            'issues' => $issues,
+            'source' => $lead->source,
+        ];
+
+        $lead->forceFill([
+            'qualification_status' => 'processing',
+            'qualification_error' => null,
+        ])->save();
+
+        try {
+            $response = Http::asJson()
+                ->acceptJson()
+                ->connectTimeout(2)
+                ->timeout(5)
+                ->post($url, $payload);
+
+            if (!$response->successful()) {
+                $lead->forceFill([
+                    'qualification_status' => 'failed',
+                    'qualification_error' => 'HTTP '.$response->status(),
+                ])->save();
+            }
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $lead->forceFill([
+                'qualification_status' => 'failed',
+                'qualification_error' => Str::limit($exception->getMessage(), 500, ''),
+            ])->save();
+        }
     }
 
     private function syncToSpreadsheet(Lead $lead, Diagnosis $diagnosis, array $issues): string
@@ -147,6 +241,24 @@ class LeadController extends Controller
 
             return 'failed';
         }
+    }
+
+    private function authorizeN8n(Request $request): ?JsonResponse
+    {
+        $expected = (string) config('services.n8n.sync_token');
+        $provided = (string) $request->header('X-Sync-Token');
+
+        if (
+            $expected === '' ||
+            $provided === '' ||
+            !hash_equals($expected, $provided)
+        ) {
+            return response()->json([
+                'message' => 'Unauthorized qualification request.',
+            ], 401);
+        }
+
+        return null;
     }
 
     private function normaliseWhatsapp(string $value): ?string
