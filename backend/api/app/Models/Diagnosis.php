@@ -30,6 +30,10 @@ class Diagnosis extends Model
         'ai_urgency',
         'ai_confidence',
         'ai_analyzed_at',
+        'ai_status',
+        'ai_attempts',
+        'ai_error',
+        'ai_last_attempt_at',
     ];
 
     protected function casts(): array
@@ -42,8 +46,14 @@ class Diagnosis extends Model
             'jam_operasi' => 'integer',
             'health_score' => 'integer',
             'confidence' => 'integer',
-'ai_probable_causes' => 'array', 'ai_technical_findings' => 'array', 'ai_recommended_actions' => 'array', 'ai_limitations' => 
-'array', 'ai_confidence' => 'integer', 'ai_analyzed_at' => 'datetime',
+            'ai_probable_causes' => 'array',
+            'ai_technical_findings' => 'array',
+            'ai_recommended_actions' => 'array',
+            'ai_limitations' => 'array',
+            'ai_confidence' => 'integer',
+            'ai_analyzed_at' => 'datetime',
+            'ai_attempts' => 'integer',
+            'ai_last_attempt_at' => 'datetime',
         ];
     }
 
