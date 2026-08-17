@@ -39,6 +39,7 @@ return [
         'sync_token' => env('N8N_SYNC_TOKEN'),
         'ai_diagnostic_url' => env('N8N_AI_DIAGNOSTIC_URL'),
         'lead_capture_url' => env('N8N_LEAD_CAPTURE_URL'),
+        'lead_qualification_url' => env('N8N_LEAD_QUALIFICATION_URL'),
     ],
 
 ];
