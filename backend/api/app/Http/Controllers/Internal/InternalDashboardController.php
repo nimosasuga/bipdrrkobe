@@ -49,6 +49,37 @@ class InternalDashboardController extends Controller
                 ->count(),
         ];
 
+        $validSalesStatuses = [
+            'new',
+            'contacted',
+            'assessment_scheduled',
+            'proposal',
+            'won',
+            'lost',
+        ];
+
+        $salesPipeline = [
+            'new' => Lead::query()
+                ->where(function ($query) use ($validSalesStatuses): void {
+                    $query->whereNull('status')
+                        ->orWhere('status', 'new')
+                        ->orWhereNotIn('status', $validSalesStatuses);
+                })
+                ->count(),
+            'contacted' => Lead::query()->where('status', 'contacted')->count(),
+            'assessment_scheduled' => Lead::query()->where('status', 'assessment_scheduled')->count(),
+            'proposal' => Lead::query()->where('status', 'proposal')->count(),
+            'won' => Lead::query()->where('status', 'won')->count(),
+            'lost' => Lead::query()->where('status', 'lost')->count(),
+        ];
+
+        $openPipeline = (int) $salesPipeline['new']
+            + (int) $salesPipeline['contacted']
+            + (int) $salesPipeline['assessment_scheduled']
+            + (int) $salesPipeline['proposal'];
+
+        $closedPipeline = (int) $salesPipeline['won'] + (int) $salesPipeline['lost'];
+
         $recentLeads = Lead::query()
             ->select([
                 'id',
@@ -75,6 +106,10 @@ class InternalDashboardController extends Controller
             'eventCounts' => $eventCounts,
             'totalLeads' => Lead::query()->count(),
             'leadPriority' => $leadPriority,
+            'salesPipeline' => $salesPipeline,
+            'openPipeline' => $openPipeline,
+            'closedPipeline' => $closedPipeline,
+            'wonRate' => $this->rate((int) $salesPipeline['won'], $closedPipeline),
             'startedToLeadRate' => $this->rate($leadCaptured, $started),
             'leadToAssessmentRate' => $this->rate($assessmentClicked, $leadCaptured),
             'recentLeads' => $recentLeads,
