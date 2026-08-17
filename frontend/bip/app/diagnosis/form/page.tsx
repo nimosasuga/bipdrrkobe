@@ -38,19 +38,73 @@ type AiResult = {
   confidence: number | null;
 };
 type FinancialMode = 'unknown' | 'partial' | 'full';
+type FastDrainDuration = 'under_4' | 'four_to_six' | 'six_to_eight' | 'over_eight' | 'unknown';
+type ChargingDuration = 'under_6' | 'six_to_eight' | 'eight_to_ten' | 'over_ten' | 'unknown';
+type WateringFrequency = 'never' | 'less_than_weekly' | 'once_weekly' | 'twice_weekly' | 'more_than_twice' | 'unknown';
+type DowntimeFrequency = 'never' | 'once_twice' | 'three_four' | 'five_plus' | 'unknown';
+type ChargerErrorFrequency = 'never' | 'once' | 'repeated' | 'unknown';
+type HydraulicFrequency = 'never' | 'sometimes' | 'often' | 'unknown';
+type DetailOption<T extends string> = { value: T; label: string; note?: string };
 
 const issues = [
-  ['battery_fast', 'Battery Cepat Habis', 'Drop < 4 jam per shift'],
-  ['charger_long', 'Charger Lama / Error', 'Charge > 10 jam / error code'],
-  ['downtime', 'Downtime Sering', '> 2x breakdown / bulan'],
-  ['maintenance', 'Maintenance Tinggi', 'Service & isi air rutin'],
-  ['productivity', 'Produktivitas Menurun', 'Cycle time melambat'],
-  ['electrical', 'Error Code / Electrical', 'Kode error di display'],
-  ['hydraulic', 'Hydraulic Lambat', 'Angkat lambat saat low batt'],
-  ['drive', 'Drive / Steering Issue', 'Tarik berat / steering liar'],
-  ['overheat', 'Overheat', 'Battery / motor panas'],
-  ['watering', 'Isi Air Sering', 'Top-up >2x seminggu'],
+  ['battery_fast', 'Battery Tidak Bertahan Sampai Akhir Shift', 'Daya turun lebih cepat dari kebutuhan kerja normal.'],
+  ['charger_long', 'Pengisian Battery Terlalu Lama / Charger Bermasalah', 'Battery lama siap digunakan kembali atau charger menunjukkan gangguan.'],
+  ['downtime', 'Forklift Sering Berhenti Karena Battery / Charger', 'Operasi terganggu karena daya battery atau proses pengisian.'],
+  ['maintenance', 'Perawatan Battery Terasa Terlalu Sering', 'Isi air, pembersihan, atau pemeriksaan menyita waktu kerja.'],
+  ['productivity', 'Produktivitas Forklift Menurun', 'Kecepatan kerja atau kesiapan unit berkurang dibanding kondisi normal.'],
+  ['electrical', 'Ada Kode Gangguan Kelistrikan', 'Kode gangguan muncul pada display forklift atau charger.'],
+  ['hydraulic', 'Gerakan Angkat Melambat Saat Battery Lemah', 'Fungsi angkat terasa lebih lambat ketika daya battery turun.'],
+  ['drive', 'Tarikan / Steering Terasa Tidak Normal', 'Akselerasi, tarikan, atau steering terasa berbeda dari kondisi normal.'],
+  ['overheat', 'Battery / Motor Terasa Terlalu Panas', 'Temperatur terasa lebih tinggi dari biasanya saat unit bekerja.'],
+  ['watering', 'Isi Air Battery Terlalu Sering', 'Kebutuhan isi air meningkat dan menambah pekerjaan perawatan.'],
 ] as const;
+
+const fastDrainOptions: DetailOption<FastDrainDuration>[] = [
+  { value: 'under_4', label: '< 4 jam', note: 'Daya turun sangat cepat.' },
+  { value: 'four_to_six', label: '4–6 jam', note: 'Belum mencapai satu shift penuh.' },
+  { value: 'six_to_eight', label: '6–8 jam', note: 'Mendekati satu shift.' },
+  { value: 'over_eight', label: '> 8 jam', note: 'Mampu melewati satu shift normal.' },
+  { value: 'unknown', label: 'Tidak tahu', note: 'Tidak ada data yang cukup.' },
+];
+
+const chargingDurationOptions: DetailOption<ChargingDuration>[] = [
+  { value: 'under_6', label: '< 6 jam' },
+  { value: 'six_to_eight', label: '6–8 jam' },
+  { value: 'eight_to_ten', label: '8–10 jam' },
+  { value: 'over_ten', label: '> 10 jam' },
+  { value: 'unknown', label: 'Tidak tahu' },
+];
+
+const wateringOptions: DetailOption<WateringFrequency>[] = [
+  { value: 'never', label: 'Tidak pernah' },
+  { value: 'less_than_weekly', label: '< 1x / minggu' },
+  { value: 'once_weekly', label: '1x / minggu' },
+  { value: 'twice_weekly', label: '2x / minggu' },
+  { value: 'more_than_twice', label: '> 2x / minggu' },
+  { value: 'unknown', label: 'Tidak tahu' },
+];
+
+const downtimeOptions: DetailOption<DowntimeFrequency>[] = [
+  { value: 'never', label: 'Tidak pernah' },
+  { value: 'once_twice', label: '1–2x / bulan' },
+  { value: 'three_four', label: '3–4x / bulan' },
+  { value: 'five_plus', label: '≥ 5x / bulan' },
+  { value: 'unknown', label: 'Tidak tahu' },
+];
+
+const chargerErrorOptions: DetailOption<ChargerErrorFrequency>[] = [
+  { value: 'never', label: 'Tidak pernah' },
+  { value: 'once', label: 'Pernah 1x' },
+  { value: 'repeated', label: 'Berulang' },
+  { value: 'unknown', label: 'Tidak tahu' },
+];
+
+const hydraulicOptions: DetailOption<HydraulicFrequency>[] = [
+  { value: 'never', label: 'Tidak' },
+  { value: 'sometimes', label: 'Kadang-kadang' },
+  { value: 'often', label: 'Sering' },
+  { value: 'unknown', label: 'Tidak tahu' },
+];
 
 const comparisonRows = [
   ['Charging Time', '8–12 jam + cooling', '1.5–2.5 jam, opportunity charge'],
@@ -62,6 +116,10 @@ const comparisonRows = [
   ['Safety / Emission', 'Gas H2, acid handling', 'Sealed, no watering'],
 ];
 
+function optionLabel<T extends string>(options: DetailOption<T>[], value: T): string {
+  return options.find((option) => option.value === value)?.label ?? 'Tidak tahu';
+}
+
 export default function DiagnosisFormPage() {
   const [step, setStep] = useState(1);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -71,12 +129,12 @@ export default function DiagnosisFormPage() {
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
   const [umur, setUmur] = useState(4);
   const [shift, setShift] = useState(2);
-  const [isiAir, setIsiAir] = useState(2);
-  const [cepatHabis, setCepatHabis] = useState(true);
-  const [chargingLama, setChargingLama] = useState(true);
-  const [downtime, setDowntime] = useState(true);
-  const [chargerError, setChargerError] = useState(false);
-  const [hydraulicLambat, setHydraulicLambat] = useState(false);
+  const [fastDrainDuration, setFastDrainDuration] = useState<FastDrainDuration>('unknown');
+  const [chargingDuration, setChargingDuration] = useState<ChargingDuration>('unknown');
+  const [wateringFrequency, setWateringFrequency] = useState<WateringFrequency>('unknown');
+  const [downtimeFrequency, setDowntimeFrequency] = useState<DowntimeFrequency>('unknown');
+  const [chargerErrorFrequency, setChargerErrorFrequency] = useState<ChargerErrorFrequency>('unknown');
+  const [hydraulicFrequency, setHydraulicFrequency] = useState<HydraulicFrequency>('unknown');
   const [jumlahForklift, setJumlahForklift] = useState(5);
   const [roiJamOperasi, setRoiJamOperasi] = useState(16);
   const [roiShift, setRoiShift] = useState(2);
@@ -101,6 +159,29 @@ export default function DiagnosisFormPage() {
     () => issues.filter(([key]) => selectedIssues.includes(key)).map(([, label]) => label),
     [selectedIssues],
   );
+
+  const cepatHabis: boolean | null = fastDrainDuration === 'unknown' ? null : fastDrainDuration === 'under_4';
+  const chargingLama: boolean | null = chargingDuration === 'unknown'
+    ? null
+    : chargingDuration === 'eight_to_ten' || chargingDuration === 'over_ten';
+  const isiAir: number | null = wateringFrequency === 'unknown'
+    ? null
+    : wateringFrequency === 'never' || wateringFrequency === 'less_than_weekly'
+      ? 0
+      : wateringFrequency === 'once_weekly'
+        ? 1
+        : wateringFrequency === 'twice_weekly'
+          ? 2
+          : 3;
+  const downtime: boolean | null = downtimeFrequency === 'unknown'
+    ? null
+    : downtimeFrequency === 'three_four' || downtimeFrequency === 'five_plus';
+  const chargerError: boolean | null = chargerErrorFrequency === 'unknown'
+    ? null
+    : chargerErrorFrequency === 'once' || chargerErrorFrequency === 'repeated';
+  const hydraulicLambat: boolean | null = hydraulicFrequency === 'unknown'
+    ? null
+    : hydraulicFrequency === 'sometimes' || hydraulicFrequency === 'often';
 
   useEffect(() => {
     fetch(`${API_BASE}/master/brands`, { headers: { Accept: 'application/json' } })
@@ -178,7 +259,7 @@ export default function DiagnosisFormPage() {
   function goNext() {
     setError('');
     if (step === 1 && !modelId) return setError('Pilih brand dan model forklift terlebih dahulu.');
-    if (step === 3 && selectedIssues.length === 0) return setError('Pilih minimal satu masalah yang dialami.');
+    if (step === 3 && selectedIssues.length === 0) return setError('Pilih minimal satu masalah yang benar-benar terjadi.');
     setStep((current) => Math.min(9, current + 1));
   }
 
@@ -220,6 +301,12 @@ export default function DiagnosisFormPage() {
           shift,
           jam_operasi: jamOperasi,
           answers: {
+            fast_drain_duration: fastDrainDuration,
+            charging_duration: chargingDuration,
+            watering_frequency: wateringFrequency,
+            downtime_frequency: downtimeFrequency,
+            charger_error_frequency: chargerErrorFrequency,
+            hydraulic_when_low: hydraulicFrequency,
             cepat_habis: cepatHabis,
             charging_lama: chargingLama,
             isi_air: isiAir,
@@ -247,6 +334,12 @@ export default function DiagnosisFormPage() {
     setBrandId('');
     setModelId('');
     setSelectedIssues([]);
+    setFastDrainDuration('unknown');
+    setChargingDuration('unknown');
+    setWateringFrequency('unknown');
+    setDowntimeFrequency('unknown');
+    setChargerErrorFrequency('unknown');
+    setHydraulicFrequency('unknown');
     setDiagnosis(null);
     setDiagnosisId(null);
     setAi(null);
@@ -268,8 +361,8 @@ export default function DiagnosisFormPage() {
   ).slice(0, 4);
 
   const downtimeHours = Math.round(((umur * 1.5 + shift * 2) * 1.2) * 10) / 10;
-  const chargingWaste = chargingLama ? Math.max(0, (8 - 2) * 26) : 0;
-  const maintenanceYear = isiAir * 52 + 12;
+  const chargingWaste = chargingLama === true ? Math.max(0, (8 - 2) * 26) : 0;
+  const maintenanceYear = isiAir === null ? 0 : isiAir * 52 + 12;
   const operationalHoursMonth = Math.max(1, jamOperasi * 26);
   const productivityLoss = Math.min(100, Math.round((downtimeHours / operationalHoursMonth) * 100));
   const roiDowntime = roiShift >= 3 ? 75 : roiShift >= 2 ? 70 : 65;
@@ -296,7 +389,7 @@ export default function DiagnosisFormPage() {
   const whatsappMessage = [
     'Halo tim DRRKOBE,',
     '',
-    'Saya sudah menyelesaikan diagnosis di DRRKOBE Battery Intelligence Platform dan ingin mengajukan technical assessment.',
+    'Saya sudah menyelesaikan diagnosis di DRRKOBE Battery Intelligence Platform dan ingin mengajukan pemeriksaan teknis.',
     ...(companyName || siteName ? ['', '*DATA PERUSAHAAN*', `Perusahaan: ${companyName || '-'}`, `Lokasi/site: ${siteName || '-'}`] : []),
     '',
     '*DATA UNIT*',
@@ -313,21 +406,21 @@ export default function DiagnosisFormPage() {
     issueText,
     '',
     '*DETAIL KONDISI*',
-    `Battery cepat habis dalam 1 shift: ${cepatHabis ? 'Ya' : 'Tidak'}`,
-    `Charging lebih dari 8 jam: ${chargingLama ? 'Ya' : 'Tidak'}`,
-    `Frekuensi isi air: ${isiAir}x per minggu`,
-    `Downtime lebih dari 2x per bulan: ${downtime ? 'Ya' : 'Tidak'}`,
-    `Charger muncul error code: ${chargerError ? 'Ya' : 'Tidak'}`,
-    `Hydraulic lambat saat battery low: ${hydraulicLambat ? 'Ya' : 'Tidak'}`,
+    `Daya battery bertahan: ${optionLabel(fastDrainOptions, fastDrainDuration)}`,
+    `Durasi pengisian: ${optionLabel(chargingDurationOptions, chargingDuration)}`,
+    `Pemeriksaan / isi air: ${optionLabel(wateringOptions, wateringFrequency)}`,
+    `Unit berhenti karena battery/charging: ${optionLabel(downtimeOptions, downtimeFrequency)}`,
+    `Gangguan pada charger: ${optionLabel(chargerErrorOptions, chargerErrorFrequency)}`,
+    `Gerakan angkat saat daya rendah: ${optionLabel(hydraulicOptions, hydraulicFrequency)}`,
     '',
     '*HASIL DRRKOBE BIP*',
-    `Health Score: ${health}%`,
+    `Skor kondisi battery: ${health}%`,
     `Kategori: ${diagnosis?.category || '-'}`,
     `Urgensi: ${urgency}`,
-    `Confidence: ${confidence}%`,
+    `Tingkat keyakinan: ${confidence}%`,
     `Diagnosis ID: ${diagnosisId || '-'}`,
     '',
-    '*INDIKASI AKAR MASALAH*',
+    '*INDIKASI PENYEBAB UTAMA*',
     rootCauseText,
     '',
     '*SIMULASI OPERASIONAL*',
@@ -337,12 +430,12 @@ export default function DiagnosisFormPage() {
     `Potensi pengurangan downtime: ${roiDowntime}%`,
     'Potensi peningkatan efisiensi energi: 28%',
     'Potensi pengurangan aktivitas maintenance: 90%',
-    `Operational fit: ${operationalFit}`,
+    `Kesesuaian operasional: ${operationalFit}`,
     ...(hasFinancialInputs
       ? ['', '*DATA BIAYA YANG TERSEDIA*', `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`, ...(financialMode === 'full' ? [`Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`, `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`] : []), `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`, `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)}`]
       : ['', '*STATUS FINANSIAL*', 'Menunggu validasi data biaya perusahaan. Dampak operasional tetap dihitung tanpa membuat asumsi nominal biaya.']),
     '',
-    'Mohon dibantu untuk langkah technical assessment berikutnya. Data di atas merupakan hasil awal BIP dan keputusan teknis tetap memerlukan verifikasi kondisi aktual di lapangan.',
+    'Mohon dibantu untuk langkah pemeriksaan teknis berikutnya. Data di atas merupakan hasil awal dan keputusan teknis tetap memerlukan verifikasi kondisi aktual di lapangan.',
   ].join('\n');
   const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMessage)}`;
 
@@ -361,12 +454,12 @@ export default function DiagnosisFormPage() {
       batteryAgeYears: umur,
       shift,
       operatingHoursPerDay: jamOperasi,
-      wateringPerWeek: isiAir,
-      fastDrain: cepatHabis,
-      longCharging: chargingLama,
-      frequentDowntime: downtime,
-      chargerError,
-      hydraulicSlow: hydraulicLambat,
+      wateringPerWeek: isiAir ?? 0,
+      fastDrain: cepatHabis === true,
+      longCharging: chargingLama === true,
+      frequentDowntime: downtime === true,
+      chargerError: chargerError === true,
+      hydraulicSlow: hydraulicLambat === true,
       issues: selectedIssueLabels,
       healthScore: health,
       healthCategory: diagnosis.category,
@@ -440,39 +533,46 @@ export default function DiagnosisFormPage() {
                 </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3"><Metric label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} /><Metric label="System Voltage" value={selectedModel?.battery_voltage ? `${selectedModel.battery_voltage} V` : '-'} /><Metric label="Nominal Capacity" value={selectedModel?.battery_capacity_ah ? `${selectedModel.battery_capacity_ah} Ah` : '-'} /></div>
               </Panel>
-              <Panel><Mono>WHY THIS MATTERS</Mono><h3 className="mt-3 text-xl font-black">Kondisi awal harus jelas sebelum diagnosis.</h3><p className="mt-3 text-sm leading-6 text-zinc-600">Tipe battery dikunci pada Lead Acid agar Health Score, perbandingan teknologi, dan rekomendasi tetap konsisten dengan kondisi unit yang dinilai.</p><div className="mt-5 rounded-xl bg-[#0A0A0A] p-4 text-sm font-semibold text-white">Tidak ada harga yang ditampilkan pada proses diagnosis.</div></Panel>
+              <Panel><Mono>WHY THIS MATTERS</Mono><h3 className="mt-3 text-xl font-black">Kondisi awal harus jelas sebelum diagnosis.</h3><p className="mt-3 text-sm leading-6 text-zinc-600">Tipe battery dikunci pada Lead Acid agar skor kondisi, perbandingan teknologi, dan rekomendasi tetap konsisten dengan kondisi unit yang dinilai.</p><div className="mt-5 rounded-xl bg-[#0A0A0A] p-4 text-sm font-semibold text-white">Tidak ada harga yang ditampilkan pada proses diagnosis.</div></Panel>
             </div>
             <Nav error={error} onBack={goBack} onNext={goNext} />
           </StepFrame>
         )}
 
         {step === 3 && (
-          <StepFrame eyebrow="STEP 3 / 9 — MULTI-ISSUE FINDER" title="Pilih Semua Masalah Yang Kamu Alami">
-            <p className="mb-6 max-w-3xl text-sm leading-6 text-zinc-600">Pilih semua gejala yang benar-benar terjadi. DRRKOBE akan membaca keterkaitan antar-masalah sebagai satu kondisi operasional.</p>
+          <StepFrame eyebrow="STEP 3 / 9 — GEJALA OPERASIONAL" title="Pilih Gejala Yang Benar-Benar Terjadi">
+            <p className="mb-3 max-w-3xl text-sm leading-6 text-zinc-600">Pilih berdasarkan kondisi yang benar-benar terlihat atau dirasakan saat forklift bekerja. Tidak perlu menebak penyebab teknisnya.</p>
+            <div className="mb-6 rounded-xl border border-[#FFCC00]/50 bg-[#FFFEF0] px-4 py-3 text-xs leading-5 text-zinc-700"><b>Petunjuk:</b> pilih gejalanya saja. Penyebab akan dianalisis pada tahap berikutnya setelah detail operasi dilengkapi.</div>
             <div className="grid gap-3 md:grid-cols-2">
               {issues.map(([key, title, description]) => {
                 const active = selectedIssues.includes(key);
-                return <button key={key} type="button" onClick={() => toggleIssue(key)} className={`rounded-[18px] border p-5 text-left transition ${active ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white shadow-lg' : 'border-zinc-200 bg-white hover:border-zinc-400'}`}><div className="flex items-start justify-between gap-4"><div><div className="font-black">{title}</div><div className={`mt-1 text-sm ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{description}</div></div><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${active ? 'bg-[#FFCC00] text-black' : 'border border-zinc-300'}`}>{active ? '✓' : '+'}</span></div></button>;
+                return <button key={key} type="button" onClick={() => toggleIssue(key)} className={`rounded-[18px] border p-5 text-left transition ${active ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white shadow-lg' : 'border-zinc-200 bg-white hover:border-zinc-400'}`}><div className="flex items-start justify-between gap-4"><div><div className="font-black">{title}</div><div className={`mt-1 text-sm leading-5 ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{description}</div></div><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${active ? 'bg-[#FFCC00] text-black' : 'border border-zinc-300'}`}>{active ? '✓' : '+'}</span></div></button>;
               })}
             </div>
-            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#FFFEF0] px-4 py-3 text-sm"><span>Masalah dipilih</span><strong>{selectedIssues.length} / 10</strong></div>
-            <Nav error={error} onBack={goBack} onNext={goNext} nextLabel="Detail Operasional" />
+            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#FFFEF0] px-4 py-3 text-sm"><span>Gejala dipilih</span><strong>{selectedIssues.length} / 10</strong></div>
+            <Nav error={error} onBack={goBack} onNext={goNext} nextLabel="Lengkapi Detail Operasi" />
           </StepFrame>
         )}
 
         {step === 4 && (
-          <StepFrame eyebrow="STEP 4 / 9 — OPERATIONAL DETAIL" title="Detail Operasional Untuk Diagnosis Gabungan">
+          <StepFrame eyebrow="STEP 4 / 9 — DETAIL OPERASI" title="Lengkapi Kondisi Operasional">
+            <p className="mb-6 max-w-3xl text-sm leading-6 text-zinc-600">Pilih kondisi yang paling mendekati keadaan sebenarnya. Gunakan <b>Tidak tahu</b> bila data belum tersedia; DRRKOBE tidak akan menganggap jawaban yang tidak diketahui sebagai fakta.</p>
+
             <div className="grid gap-4 lg:grid-cols-2">
-              <YesNo label="Apakah battery cepat habis dalam 1 shift?" value={cepatHabis} onChange={setCepatHabis} />
-              <YesNo label="Durasi charging lebih dari 8 jam?" value={chargingLama} onChange={setChargingLama} />
+              <DetailChoice label="Rata-rata berapa lama battery mampu bekerja sebelum perlu diisi ulang?" value={fastDrainDuration} options={fastDrainOptions} onChange={setFastDrainDuration} />
+              <DetailChoice label="Berapa lama rata-rata proses pengisian sampai battery siap digunakan kembali?" value={chargingDuration} options={chargingDurationOptions} onChange={setChargingDuration} />
               <Choice label="Berapa shift operasional per hari?" value={shift} values={[1, 2, 3]} onChange={setShift} suffix=" Shift" />
-              <Range label={`Umur battery: ${umur} tahun`} value={umur} min={0} max={8} onChange={setUmur} />
-              <Choice label="Frekuensi isi air per minggu?" value={isiAir} values={[0, 1, 2, 3, 4]} onChange={setIsiAir} suffix="x" />
-              <YesNo label="Downtime lebih dari 2x per bulan?" value={downtime} onChange={setDowntime} />
-              <YesNo label="Charger muncul error code?" value={chargerError} onChange={setChargerError} />
-              <YesNo label="Hydraulic lambat saat battery low?" value={hydraulicLambat} onChange={setHydraulicLambat} />
+              <Panel><Range label={`Perkiraan umur battery: ${umur} tahun`} value={umur} min={0} max={8} onChange={setUmur} /><p className="mt-3 text-xs leading-5 text-zinc-500">Gunakan tahun pemasangan atau riwayat penggantian battery bila tersedia.</p></Panel>
+              <DetailChoice label="Dalam kondisi normal, seberapa sering battery diperiksa atau diisi air?" value={wateringFrequency} options={wateringOptions} onChange={setWateringFrequency} />
+              <DetailChoice label="Dalam 1 bulan, seberapa sering forklift berhenti karena battery atau proses pengisian?" value={downtimeFrequency} options={downtimeOptions} onChange={setDowntimeFrequency} />
+              <DetailChoice label="Seberapa sering charger menampilkan kode gangguan?" value={chargerErrorFrequency} options={chargerErrorOptions} onChange={setChargerErrorFrequency} />
+              <DetailChoice label="Saat daya battery rendah, apakah gerakan angkat terasa melambat?" value={hydraulicFrequency} options={hydraulicOptions} onChange={setHydraulicFrequency} />
             </div>
-            <div className="mt-5 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">Jam operasi dihitung dari pola shift: <b className="text-black">{jamOperasi} jam/hari</b>. Health Score dihitung dari data yang diisi pada proses ini.</div>
+
+            <div className="mt-5 grid gap-3 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 sm:grid-cols-2">
+              <div>Jam operasi berdasarkan pola shift: <b className="text-black">{jamOperasi} jam/hari</b>.</div>
+              <div>Jawaban “Tidak tahu” menurunkan tingkat keyakinan, tetapi <b className="text-black">tidak otomatis menurunkan skor kondisi</b>.</div>
+            </div>
             <Nav error={error} onBack={goBack} onNext={() => void createDiagnosis()} nextLabel={processing ? 'Menganalisis...' : 'Jalankan Diagnosis'} disabled={processing} />
           </StepFrame>
         )}
@@ -480,10 +580,10 @@ export default function DiagnosisFormPage() {
         {step === 5 && diagnosis && (
           <StepFrame eyebrow="STEP 5 / 9 — AGGREGATED DIAGNOSIS" title="Hasil Diagnosis DRRKOBE">
             <div className="overflow-hidden rounded-[24px] border border-zinc-200 bg-white">
-              <div className="border-b border-zinc-200 p-5 lg:flex lg:items-center lg:justify-between lg:gap-5"><div><div className="font-black">{selectedIssues.length} masalah dianalisis sebagai satu kondisi operasional</div><Mono>Confidence {confidence}% • Multi-Issue Analysis</Mono></div><div className="mt-4 flex flex-wrap gap-2 lg:mt-0">{selectedIssueLabels.map((label) => <span key={label} className="rounded-full border border-[#FFCC00] bg-[#FFFEF0] px-3 py-1 text-xs font-bold">{label}</span>)}</div></div>
+              <div className="border-b border-zinc-200 p-5 lg:flex lg:items-center lg:justify-between lg:gap-5"><div><div className="font-black">{selectedIssues.length} masalah dianalisis sebagai satu kondisi operasional</div><Mono>Tingkat keyakinan {confidence}% • Analisis multi-gejala</Mono></div><div className="mt-4 flex flex-wrap gap-2 lg:mt-0">{selectedIssueLabels.map((label) => <span key={label} className="rounded-full border border-[#FFCC00] bg-[#FFFEF0] px-3 py-1 text-xs font-bold">{label}</span>)}</div></div>
               <div className="grid lg:grid-cols-[340px_1fr]">
-                <div className="border-b border-zinc-200 p-7 lg:border-b-0 lg:border-r"><Mono>BATTERY HEALTH SCORE</Mono><HealthGauge value={health} /><div className="mt-7 space-y-3 text-sm"><KeyValue label="Urgency" value={urgency} /><KeyValue label="Confidence" value={`${confidence}%`} /><KeyValue label="Issues" value={`${selectedIssues.length} masalah`} /></div><Mono className="mt-8">DRRKOBE.COM/BIP • Diagnostic Engine</Mono></div>
-                <div className="p-7"><Mono>ROOT CAUSE ANALYSIS</Mono><div className="mt-6 space-y-5">{causeRows.map((cause, index) => <CauseBar key={`${cause.name}-${index}`} name={cause.name} value={cause.value} />)}</div><div className="mt-7 rounded-[18px] bg-[#0A0A0A] p-5 text-white"><div className="font-black text-[#FFCC00]">DRRKOBE INTERPRETATION</div><p className="mt-2 text-sm leading-6 text-zinc-300">{ai?.summary || `Health Score ${health}% terbentuk dari kombinasi usia battery, pola ${shift} shift, charging, downtime, frekuensi isi air, dan ${selectedIssues.length} masalah yang dipilih. Analisis lanjutan sedang diproses tanpa menahan hasil utama.`}</p></div>{!ai?.analyzed && <div className="mt-4 flex items-center gap-3 text-xs font-bold text-zinc-500"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFCC00]" /> Analisis teknis lanjutan sedang diproses...</div>}<div className="mt-7 grid gap-3 sm:grid-cols-2"><Metric label="Dampak" value={`${selectedIssues.length} masalah saling berkaitan`} /><Metric label="Selanjutnya" value="Dampak operasional & perbandingan teknologi" /></div></div>
+                <div className="border-b border-zinc-200 p-7 lg:border-b-0 lg:border-r"><Mono>SKOR KONDISI BATTERY</Mono><HealthGauge value={health} /><div className="mt-7 space-y-3 text-sm"><KeyValue label="Urgensi" value={urgency} /><KeyValue label="Tingkat keyakinan" value={`${confidence}%`} /><KeyValue label="Gejala" value={`${selectedIssues.length} masalah`} /></div><Mono className="mt-8">DRRKOBE.COM/BIP</Mono></div>
+                <div className="p-7"><Mono>PENYEBAB YANG PERLU DIVERIFIKASI</Mono><div className="mt-6 space-y-5">{causeRows.map((cause, index) => <CauseBar key={`${cause.name}-${index}`} name={cause.name} value={cause.value} />)}</div><div className="mt-7 rounded-[18px] bg-[#0A0A0A] p-5 text-white"><div className="font-black text-[#FFCC00]">INTERPRETASI DRRKOBE</div><p className="mt-2 text-sm leading-6 text-zinc-300">{ai?.summary || `Skor kondisi ${health}% dihitung dari usia battery, pola ${shift} shift, durasi pengisian, frekuensi waktu henti, perawatan isi air, dan ${selectedIssues.length} gejala yang dilaporkan. Pemeriksaan teknis lanjutan sedang dilengkapi tanpa menahan hasil utama.`}</p></div>{!ai?.analyzed && <div className="mt-4 flex items-center gap-3 text-xs font-bold text-zinc-500"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFCC00]" /> Analisis teknis lanjutan sedang dilengkapi...</div>}<div className="mt-7 grid gap-3 sm:grid-cols-2"><Metric label="Dampak" value={`${selectedIssues.length} masalah saling berkaitan`} /><Metric label="Selanjutnya" value="Dampak operasional & perbandingan teknologi" /></div></div>
               </div>
             </div>
             <Nav onBack={() => setStep(4)} onNext={() => setStep(6)} nextLabel="Lihat Dampak" />
@@ -492,8 +592,8 @@ export default function DiagnosisFormPage() {
 
         {step === 6 && diagnosis && (
           <StepFrame eyebrow="STEP 6 / 9 — AGGREGATED IMPACT" title="Dampak Operasional Gabungan">
-            <Mono>DRRKOBE Reporting Engine • {selectedIssues.length} masalah • tanpa nominal harga</Mono>
-            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><MetricCard label="Downtime" value={`${downtimeHours} jam/bulan`} sub="Perkiraan waktu berhenti tidak terencana" /><MetricCard label="Charging Exposure" value={`${chargingWaste} jam/bulan`} sub="Waktu charging yang tidak produktif" /><MetricCard label="Maintenance" value={`${maintenanceYear} tindakan/tahun`} sub="Isi air dan pemeriksaan rutin" /><MetricCard label="Productivity" value={`-${productivityLoss}%`} sub="Terhadap jam operasional tersedia" /></div>
+            <Mono>DRRKOBE • {selectedIssues.length} masalah • tanpa nominal harga</Mono>
+            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><MetricCard label="Downtime" value={`${downtimeHours} jam/bulan`} sub="Perkiraan waktu berhenti tidak terencana" /><MetricCard label="Charging Exposure" value={chargingDuration === 'unknown' ? 'Belum diketahui' : `${chargingWaste} jam/bulan`} sub="Waktu pengisian yang menyerap jam operasi" /><MetricCard label="Maintenance" value={wateringFrequency === 'unknown' ? 'Belum diketahui' : `${maintenanceYear} tindakan/tahun`} sub="Isi air dan pemeriksaan rutin" /><MetricCard label="Productivity" value={`-${productivityLoss}%`} sub="Terhadap jam operasional tersedia" /></div>
             <Panel className="mt-6"><div className="font-black">Kontribusi tiap masalah terhadap kondisi operasional</div><div className="mt-6 space-y-5">{selectedIssueLabels.slice(0, 5).map((label, index) => { const width = Math.max(25, 78 - index * 9); return <div key={label}><div className="mb-2 flex justify-between text-xs text-zinc-600"><span>{label}</span><span>{width}% bobot indikasi</span></div><div className="h-3 overflow-hidden rounded-full bg-zinc-100"><div className="h-full bg-[#0A0A0A]" style={{ width: `${width}%` }} /></div></div>; })}</div><p className="mt-6 text-xs leading-5 text-zinc-500">Angka di atas adalah indikator operasional berdasarkan data yang diisi. Tidak ada harga atau nominal biaya yang ditampilkan.</p></Panel>
             <Nav onBack={() => setStep(5)} onNext={() => setStep(7)} nextLabel="Lihat Perbandingan Teknologi" />
           </StepFrame>
@@ -543,7 +643,7 @@ export default function DiagnosisFormPage() {
               <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1.05fr]">
                 <div className="rounded-[18px] border border-zinc-200 bg-[#FCFCF9] p-5">
                   <Mono>OPERATIONAL IMPACT</Mono>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><KeyValue label="Downtime" value={`${downtimeHours} jam/bulan`} /><KeyValue label="Charging" value={`${chargingWaste} jam/bulan`} /><KeyValue label="Maintenance" value={`${maintenanceYear} tindakan/tahun`} /><KeyValue label="Productivity" value={`-${productivityLoss}%`} /></div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><KeyValue label="Downtime" value={`${downtimeHours} jam/bulan`} /><KeyValue label="Charging" value={chargingDuration === 'unknown' ? 'Belum diketahui' : `${chargingWaste} jam/bulan`} /><KeyValue label="Maintenance" value={wateringFrequency === 'unknown' ? 'Belum diketahui' : `${maintenanceYear} tindakan/tahun`} /><KeyValue label="Productivity" value={`-${productivityLoss}%`} /></div>
                 </div>
                 <div className="rounded-[18px] bg-[#0A0A0A] p-5 text-white">
                   <Mono className="text-zinc-400">FINANCIAL STATUS</Mono>
@@ -561,8 +661,8 @@ export default function DiagnosisFormPage() {
         {step === 9 && diagnosis && (
           <StepFrame eyebrow="STEP 9 / 9 — RECOMMENDATION" title="Rekomendasi DRRKOBE">
             <div className="grid gap-6 lg:grid-cols-[.9fr_1.3fr]">
-              <div><Panel><span className="inline-flex rounded-full bg-red-500 px-3 py-1 text-xs font-black text-white">{health <= 65 ? 'UPGRADE LAYAK DIPERTIMBANGKAN' : 'ASSESSMENT DIREKOMENDASIKAN'} — {selectedIssues.length} MASALAH TERINDIKASI</span><h3 className="mt-5 text-xl font-black">{selectedModel?.model_code || selectedModel?.name} • Lead Acid health {health}% • Urgensi {urgency}</h3><p className="mt-4 text-sm leading-6 text-zinc-600">Diagnosis membaca {selectedIssues.length} masalah yang saling berkaitan pada pola operasi {shift} shift / {jamOperasi} jam per hari. Rekomendasi akhir tetap membutuhkan validasi kondisi aktual sebelum keputusan perubahan teknologi.</p><div className="mt-6 grid grid-cols-3 gap-3"><Metric label="Confidence" value={`${confidence}%`} /><Metric label="Issues" value={`${selectedIssues.length}`} dark /><Metric label="Target" value="Li-ion" /></div></Panel><div className="mt-4 rounded-[18px] bg-[#0A0A0A] p-5 text-sm text-white"><b className="text-[#FFCC00]">Pemeriksaan berikutnya:</b> {ai?.recommended_actions?.[0] || 'Jadwalkan battery assessment on-site untuk memeriksa kapasitas aktual, charger, kondisi cell, dan duty cycle.'}</div></div>
-              <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white"><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div><h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan technical assessment.</p><div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left"><Mono className="text-zinc-400">DIAGNOSIS SUMMARY • DRRKOBE.COM/BIP</Mono><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}% health`} dark /><KeyValue label="Issues" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgency" value={urgency} dark /></div></div><div className="mt-7 flex flex-wrap justify-center gap-3"><button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button><a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a><button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button></div><p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Nominal finansial hanya digunakan bila Anda benar-benar mengisinya.</p></div>
+              <div><Panel><span className="inline-flex rounded-full bg-red-500 px-3 py-1 text-xs font-black text-white">{health <= 65 ? 'PEMERIKSAAN TEKNIS DIPRIORITASKAN' : 'PEMANTAUAN & VERIFIKASI'} — {selectedIssues.length} MASALAH TERINDIKASI</span><h3 className="mt-5 text-xl font-black">{selectedModel?.model_code || selectedModel?.name} • Kondisi Lead Acid {health}% • Urgensi {urgency}</h3><p className="mt-4 text-sm leading-6 text-zinc-600">Diagnosis membaca {selectedIssues.length} masalah yang saling berkaitan pada pola operasi {shift} shift / {jamOperasi} jam per hari. Rekomendasi akhir tetap membutuhkan validasi kondisi aktual sebelum keputusan perubahan teknologi.</p><div className="mt-6 grid grid-cols-3 gap-3"><Metric label="Keyakinan" value={`${confidence}%`} /><Metric label="Masalah" value={`${selectedIssues.length}`} dark /><Metric label="Evaluasi" value="Li-ion" /></div></Panel><div className="mt-4 rounded-[18px] bg-[#0A0A0A] p-5 text-sm text-white"><b className="text-[#FFCC00]">Pemeriksaan berikutnya:</b> {ai?.recommended_actions?.[0] || 'Jadwalkan pemeriksaan battery di lokasi untuk memeriksa kapasitas aktual, charger, kondisi cell, dan pola operasi.'}</div></div>
+              <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white"><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div><h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan pemeriksaan teknis.</p><div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left"><Mono className="text-zinc-400">RINGKASAN DIAGNOSIS • DRRKOBE.COM/BIP</Mono><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}%`} dark /><KeyValue label="Masalah" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgensi" value={urgency} dark /></div></div><div className="mt-7 flex flex-wrap justify-center gap-3"><button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button><a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a><button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button></div><p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Nominal finansial hanya digunakan bila Anda benar-benar mengisinya.</p></div>
             </div>
           </StepFrame>
         )}
@@ -584,9 +684,9 @@ function FinancialModeCard({ active, title, description, badge, onClick }: { act
 function Metric({ label, value, dark = false }: { label: string; value: string; dark?: boolean }) { return <div className={`rounded-xl border p-4 ${dark ? 'border-white/10 bg-white/[0.06]' : 'border-zinc-200 bg-white'}`}><div className={`text-[10px] font-bold uppercase tracking-[.14em] ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>{label}</div><div className="mt-1 text-sm font-black">{value}</div></div>; }
 function MetricCard({ label, value, sub }: { label: string; value: string; sub: string }) { return <div className="rounded-[20px] border border-zinc-200 bg-white p-6"><Mono>{label}</Mono><div className="mt-4 text-2xl font-black">{value}</div><div className="mt-2 text-xs text-zinc-500">{sub}</div></div>; }
 function DarkResult({ label, value, sub }: { label: string; value: string; sub: string }) { return <div className="rounded-[18px] border border-white/10 bg-white/[0.06] p-6"><Mono className="text-zinc-400">{label}</Mono><div className="mt-3 text-3xl font-black">{value}</div><div className="mt-2 text-xs text-zinc-400">{sub}</div></div>; }
-function YesNo({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) { return <Panel><Label>{label}</Label><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => onChange(true)} className={`rounded-full border px-4 py-3 text-sm font-black ${value ? 'border-black bg-black text-white' : 'border-zinc-200'}`}>Ya</button><button type="button" onClick={() => onChange(false)} className={`rounded-full border px-4 py-3 text-sm font-black ${!value ? 'border-black bg-black text-white' : 'border-zinc-200'}`}>Tidak</button></div></Panel>; }
 function Choice({ label, value, values, onChange, suffix = '' }: { label: string; value: number; values: number[]; onChange: (value: number) => void; suffix?: string }) { return <Panel><Label>{label}</Label><div className="mt-4 flex flex-wrap gap-2">{values.map((item) => <button key={item} type="button" onClick={() => onChange(item)} className={`min-w-[58px] flex-1 rounded-full border px-3 py-3 text-sm font-black ${value === item ? 'border-black bg-black text-white' : 'border-zinc-200 bg-white'}`}>{item}{suffix}</button>)}</div></Panel>; }
+function DetailChoice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: DetailOption<T>[]; onChange: (value: T) => void }) { return <Panel><Label>{label}</Label><div className="mt-4 grid gap-2 sm:grid-cols-2">{options.map((option) => { const active = value === option.value; return <button key={option.value} type="button" onClick={() => onChange(option.value)} className={`rounded-xl border px-4 py-3 text-left transition ${active ? 'border-black bg-black text-white' : 'border-zinc-200 bg-white hover:border-zinc-400'}`}><div className="text-sm font-black">{option.label}</div>{option.note && <div className={`mt-1 text-[11px] leading-4 ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{option.note}</div>}</button>; })}</div></Panel>; }
 function Range({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <div><Label>{label}</Label><input className="mt-4 w-full" type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} /><div className="mt-1 flex justify-between text-[10px] text-zinc-400"><span>{min}</span><span>{max}</span></div></div>; }
 function KeyValue({ label, value, dark = false }: { label: string; value: string; dark?: boolean }) { return <div className="flex items-center justify-between gap-4"><span className={dark ? 'text-zinc-400' : 'text-zinc-500'}>{label}</span><strong>{value}</strong></div>; }
 function CauseBar({ name, value }: { name: string; value: number }) { return <div><div className="mb-2 flex items-center justify-between text-sm font-black"><span>{name}</span><span>{value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-zinc-100"><div className="h-full bg-[#FFCC00]" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div></div>; }
-function HealthGauge({ value }: { value: number }) { const color = value <= 40 ? '#EF4444' : value <= 80 ? '#FFCC00' : '#22C55E'; return <div className="mt-7 flex justify-center"><div className="grid h-44 w-44 place-items-center rounded-full" style={{ background: `conic-gradient(${color} ${value * 3.6}deg,#f4f4f5 0deg)` }}><div className="grid h-36 w-36 place-items-center rounded-full bg-white text-center"><div><div className="text-5xl font-black">{value}%</div><div className="mt-1 text-xs font-black uppercase" style={{ color }}>{value <= 40 ? 'Critical' : value <= 65 ? 'Bad' : value <= 80 ? 'Caution' : 'Good'}</div></div></div></div></div>; }
+function HealthGauge({ value }: { value: number }) { const color = value <= 40 ? '#EF4444' : value <= 80 ? '#FFCC00' : '#22C55E'; return <div className="mt-7 flex justify-center"><div className="grid h-44 w-44 place-items-center rounded-full" style={{ background: `conic-gradient(${color} ${value * 3.6}deg,#f4f4f5 0deg)` }}><div className="grid h-36 w-36 place-items-center rounded-full bg-white text-center"><div><div className="text-5xl font-black">{value}%</div><div className="mt-1 text-xs font-black uppercase" style={{ color }}>{value <= 40 ? 'Kritis' : value <= 65 ? 'Buruk' : value <= 80 ? 'Waspada' : 'Baik'}</div></div></div></div></div>; }
