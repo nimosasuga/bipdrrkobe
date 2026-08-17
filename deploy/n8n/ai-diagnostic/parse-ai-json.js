@@ -2,27 +2,55 @@ const raw = $json.content ?? $json.text ?? $json.output ?? $json.message ?? $jso
 
 function extractText(value) {
   if (typeof value === 'string') return value;
+
   if (value && typeof value === 'object') {
     if (typeof value.content === 'string') return value.content;
     if (typeof value.text === 'string') return value.text;
     if (typeof value.output === 'string') return value.output;
+    if (typeof value.message === 'string') return value.message;
+    if (value.message && typeof value.message.content === 'string') return value.message.content;
+
+    const choiceContent = value.choices?.[0]?.message?.content;
+    if (typeof choiceContent === 'string') return choiceContent;
+
+    const dataContent = value.data?.message?.content ?? value.data?.content ?? value.data?.text;
+    if (typeof dataContent === 'string') return dataContent;
   }
-  return JSON.stringify(value);
+
+  return JSON.stringify(value ?? '');
 }
 
-function parseJson(text) {
+function parseJson(value) {
+  if (!value || typeof value !== 'string') return {};
+
+  const text = value.trim();
+
+  // Prioritaskan object JSON pertama hingga kurung kurawal terakhir.
+  // Ini tetap bekerja bila provider menambahkan teks sebelum/sesudah JSON.
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+
+  if (start >= 0 && end > start) {
+    try {
+      const extracted = JSON.parse(text.slice(start, end + 1));
+      if (extracted && typeof extracted === 'object' && !Array.isArray(extracted)) {
+        return extracted;
+      }
+    } catch {
+      // Lanjutkan ke pembersihan markdown di bawah.
+    }
+  }
+
   const clean = text
-    .trim()
     .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '');
+    .replace(/\s*```$/i, '')
+    .trim();
 
   try {
-    return JSON.parse(clean);
+    const parsed = JSON.parse(clean);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
-    const start = clean.indexOf('{');
-    const end = clean.lastIndexOf('}');
-    if (start >= 0 && end > start) return JSON.parse(clean.slice(start, end + 1));
-    throw new Error('AI output is not valid JSON');
+    throw new Error('Hasil balasan AI bukan format JSON yang valid');
   }
 }
 
@@ -43,21 +71,25 @@ function list(value, maxItems, maxChars) {
     : [];
 }
 
-const parsed = parseJson(extractText(raw));
+const parsed = parseJson(extractText(raw)) || {};
+
 const causes = Array.isArray(parsed.probable_causes)
-  ? parsed.probable_causes.slice(0, 3).map((item) => ({
-      cause: text(item?.cause, 120),
-      confidence: percent(item?.confidence),
-      reason: text(item?.reason, 220),
-    })).filter((item) => item.cause)
+  ? parsed.probable_causes
+      .slice(0, 3)
+      .map((item) => ({
+        cause: text(item?.cause, 120),
+        confidence: percent(item?.confidence),
+        reason: text(item?.reason, 220),
+      }))
+      .filter((item) => item.cause)
   : [];
 
 const allowedUrgency = new Set(['low', 'medium', 'high', 'critical']);
-const urgency = allowedUrgency.has(String(parsed.urgency || '').toLowerCase())
-  ? String(parsed.urgency).toLowerCase()
-  : 'medium';
+const urgencyValue = String(parsed.urgency || '').toLowerCase();
+const urgency = allowedUrgency.has(urgencyValue) ? urgencyValue : 'medium';
 
-return [{
+// Node mode: Run Once for Each Item.
+return {
   json: {
     summary: text(parsed.summary, 420),
     probable_causes: causes,
@@ -67,4 +99,4 @@ return [{
     confidence: percent(parsed.confidence),
     limitations: list(parsed.limitations, 3, 220),
   },
-}];
+};
