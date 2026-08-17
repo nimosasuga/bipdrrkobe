@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import SiteHeader from '../components/site-header';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,6 +11,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="id">
       <body>
+        <SiteHeader />
         <div className="drr-app-shell">{children}</div>
 
         <footer className="drr-footer">
@@ -36,7 +38,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <section>
               <p className="drr-footer__label">BIP V2 • 9-STEP JOURNEY</p>
               <p className="drr-footer__muted drr-footer__muted--dark">
-                Aggregated multi-issue analysis, deterministic Health Score, AI enrichment, operational impact, technology comparison, ROI indicator, dan technical assessment.
+                Aggregated multi-issue analysis, deterministic Health Score, technical enrichment, operational impact, technology comparison, ROI indicator, dan technical assessment.
               </p>
               <p className="drr-footer__palette">BLACK #0A0A0A · WHITE · YELLOW #FFCC00</p>
             </section>
