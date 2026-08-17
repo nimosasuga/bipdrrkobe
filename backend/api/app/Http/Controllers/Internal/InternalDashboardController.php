@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Internal;
 use App\Http\Controllers\Controller;
 use App\Models\FunnelEvent;
 use App\Models\Lead;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 class InternalDashboardController extends Controller
@@ -80,6 +82,30 @@ class InternalDashboardController extends Controller
 
         $closedPipeline = (int) $salesPipeline['won'] + (int) $salesPipeline['lost'];
 
+        $jakartaNow = Carbon::now('Asia/Jakarta');
+        $nowUtc = $jakartaNow->copy()->utc();
+        $endTodayUtc = $jakartaNow->copy()->endOfDay()->utc();
+
+        $openLeadBase = Lead::query()->where(function (Builder $query): void {
+            $query->whereNull('status')
+                ->orWhereNotIn('status', ['won', 'lost']);
+        });
+
+        $followUpControl = [
+            'overdue' => (clone $openLeadBase)
+                ->whereNotNull('next_follow_up_at')
+                ->where('next_follow_up_at', '<', $nowUtc)
+                ->count(),
+            'today' => (clone $openLeadBase)
+                ->whereNotNull('next_follow_up_at')
+                ->where('next_follow_up_at', '>=', $nowUtc)
+                ->where('next_follow_up_at', '<=', $endTodayUtc)
+                ->count(),
+            'unscheduled' => (clone $openLeadBase)
+                ->whereNull('next_follow_up_at')
+                ->count(),
+        ];
+
         $recentLeads = Lead::query()
             ->select([
                 'id',
@@ -94,10 +120,13 @@ class InternalDashboardController extends Controller
                 'qualification_status',
                 'qualification_reason',
                 'status',
+                'last_follow_up_at',
+                'next_follow_up_at',
                 'created_at',
             ])
+            ->orderByRaw("CASE WHEN next_follow_up_at IS NOT NULL AND next_follow_up_at < NOW() AND COALESCE(status, 'new') NOT IN ('won','lost') THEN 0 ELSE 1 END")
             ->orderByRaw("CASE lead_score WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 WHEN 'monitor' THEN 3 ELSE 4 END")
-            ->latest()
+            ->latest('created_at')
             ->limit(10)
             ->get();
 
@@ -109,6 +138,8 @@ class InternalDashboardController extends Controller
             'salesPipeline' => $salesPipeline,
             'openPipeline' => $openPipeline,
             'closedPipeline' => $closedPipeline,
+            'followUpControl' => $followUpControl,
+            'nowJakarta' => $jakartaNow,
             'wonRate' => $this->rate((int) $salesPipeline['won'], $closedPipeline),
             'startedToLeadRate' => $this->rate($leadCaptured, $started),
             'leadToAssessmentRate' => $this->rate($assessmentClicked, $leadCaptured),
