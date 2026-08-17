@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Diagnosis;
+use App\Services\AiDiagnosticService;
 use App\Services\HealthScoreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,10 @@ class DiagnosisController extends Controller
             'answers.charging_lama' => ['required', 'boolean'],
             'answers.isi_air' => ['required', 'integer', 'min:0', 'max:7'],
             'answers.downtime' => ['required', 'boolean'],
+            'answers.charger_error' => ['sometimes', 'boolean'],
+            'answers.hydraulic_lambat' => ['sometimes', 'boolean'],
+            'answers.issues' => ['sometimes', 'array', 'max:10'],
+            'answers.issues.*' => ['string', 'max:80'],
         ]);
 
         $cacheKey = 'diagnosis:' . $validated['session_id'];
@@ -120,14 +125,14 @@ class DiagnosisController extends Controller
             ];
         }
 
-        if (!empty($answers['charging_lama'])) {
+        if (!empty($answers['charging_lama']) || !empty($answers['charger_error'])) {
             $causes[] = [
                 'name' => 'Charging Habit',
                 'prob' => 68,
             ];
         }
 
-        if (!empty($answers['downtime'])) {
+        if (!empty($answers['downtime']) || !empty($answers['hydraulic_lambat'])) {
             $causes[] = [
                 'name' => 'Cell Imbalance',
                 'prob' => 64,
@@ -151,79 +156,58 @@ class DiagnosisController extends Controller
             $answers['charging_lama'] ?? null,
             $answers['isi_air'] ?? null,
             $answers['downtime'] ?? null,
+            $answers['charger_error'] ?? null,
+            $answers['hydraulic_lambat'] ?? null,
         ])->filter(fn ($value) => $value !== null)->count();
 
-        return min(95, 75 + ($answeredSignals * 5));
+        $issueBonus = min(8, count($answers['issues'] ?? []));
+
+        return min(95, 65 + ($answeredSignals * 4) + $issueBonus);
     }
 
-public function result(
-    Diagnosis $diagnosis,
-    \App\Services\AiDiagnosticService $aiDiagnosticService
-): JsonResponse {
-    $context = $aiDiagnosticService->buildContext($diagnosis);
+    public function result(
+        Diagnosis $diagnosis,
+        AiDiagnosticService $aiDiagnosticService
+    ): JsonResponse {
+        $context = $aiDiagnosticService->buildContext($diagnosis);
 
-    $category = match (true) {
-        $diagnosis->health_score <= 40 => 'Kritis',
-        $diagnosis->health_score <= 65 => 'Buruk',
-        $diagnosis->health_score <= 80 => 'Waspada',
-        default => 'Baik',
-    };
+        $category = match (true) {
+            $diagnosis->health_score <= 40 => 'Kritis',
+            $diagnosis->health_score <= 65 => 'Buruk',
+            $diagnosis->health_score <= 80 => 'Waspada',
+            default => 'Baik',
+        };
 
-    return response()->json([
-        'success' => true,
-
-        'data' => [
-            'diagnosis_id' => $diagnosis->id,
-            'session_id' => $diagnosis->session_id,
-
-            'health_score' => $diagnosis->health_score,
-            'category' => $category,
-
-            'battery_type' => $diagnosis->battery_type,
-            'umur_battery' => $diagnosis->umur_battery,
-            'shift' => $diagnosis->shift,
-            'jam_operasi' => $diagnosis->jam_operasi,
-            'answers' => $diagnosis->answers_json,
-
-            'forklift' => $context['forklift'],
-
-            'battery_specs' => $context['battery_specs'],
-            'charger_specs' => $context['charger_specs'],
-
-            'diagnostic_rules' => $context['diagnostic_rules'],
-
-            'ai' => [
-                'analyzed' => $diagnosis->ai_analyzed_at !== null,
-
-                'summary' => $diagnosis->ai_summary,
-
-                'probable_causes' =>
-                    $diagnosis->ai_probable_causes ?? [],
-
-                'technical_findings' =>
-                    $diagnosis->ai_technical_findings ?? [],
-
-                'recommended_actions' =>
-                    $diagnosis->ai_recommended_actions ?? [],
-
-                'limitations' =>
-                    $diagnosis->ai_limitations ?? [],
-
-                'urgency' => $diagnosis->ai_urgency,
-
-                'confidence' => $diagnosis->ai_confidence,
-
-                'analyzed_at' =>
-                    $diagnosis->ai_analyzed_at?->toISOString(),
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'diagnosis_id' => $diagnosis->id,
+                'session_id' => $diagnosis->session_id,
+                'health_score' => $diagnosis->health_score,
+                'category' => $category,
+                'battery_type' => $diagnosis->battery_type,
+                'umur_battery' => $diagnosis->umur_battery,
+                'shift' => $diagnosis->shift,
+                'jam_operasi' => $diagnosis->jam_operasi,
+                'answers' => $diagnosis->answers_json,
+                'forklift' => $context['forklift'],
+                'battery_specs' => $context['battery_specs'],
+                'charger_specs' => $context['charger_specs'],
+                'diagnostic_rules' => $context['diagnostic_rules'],
+                'ai' => [
+                    'analyzed' => $diagnosis->ai_analyzed_at !== null,
+                    'summary' => $diagnosis->ai_summary,
+                    'probable_causes' => $diagnosis->ai_probable_causes ?? [],
+                    'technical_findings' => $diagnosis->ai_technical_findings ?? [],
+                    'recommended_actions' => $diagnosis->ai_recommended_actions ?? [],
+                    'limitations' => $diagnosis->ai_limitations ?? [],
+                    'urgency' => $diagnosis->ai_urgency,
+                    'confidence' => $diagnosis->ai_confidence,
+                    'analyzed_at' => $diagnosis->ai_analyzed_at?->toISOString(),
+                ],
+                'created_at' => $diagnosis->created_at?->toISOString(),
+                'updated_at' => $diagnosis->updated_at?->toISOString(),
             ],
-
-            'created_at' =>
-                $diagnosis->created_at?->toISOString(),
-
-            'updated_at' =>
-                $diagnosis->updated_at?->toISOString(),
-        ],
-    ]);
-}
-
+        ]);
+    }
 }
