@@ -11,7 +11,6 @@ class HealthScoreService
         $umur = (int) ($data['umur_battery'] ?? 0);
         $shift = (int) ($data['shift'] ?? 1);
         $batteryType = $data['battery_type'] ?? 'lead_acid';
-
         $answers = $data['answers'] ?? [];
 
         if ($umur > 4) {
@@ -22,7 +21,7 @@ class HealthScoreService
             $score -= 10;
         }
 
-        if (!empty($answers['charging_lama'])) {
+        if (($answers['charging_lama'] ?? null) === true) {
             $score -= 15;
         }
 
@@ -30,17 +29,19 @@ class HealthScoreService
             $score -= 15;
         }
 
-        $isiAir = (int) ($answers['isi_air'] ?? 0);
+        if (array_key_exists('isi_air', $answers) && $answers['isi_air'] !== null) {
+            $isiAir = (int) $answers['isi_air'];
 
-        if ($isiAir < 1) {
-            $score -= 15;
+            if ($isiAir < 1) {
+                $score -= 15;
+            }
         }
 
-        if (!empty($answers['downtime'])) {
+        if (($answers['downtime'] ?? null) === true) {
             $score -= 20;
         }
 
-        if (!empty($answers['cepat_habis'])) {
+        if (($answers['cepat_habis'] ?? null) === true) {
             $score -= 10;
         }
 
