@@ -8,6 +8,7 @@ use App\Models\Lead;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -29,10 +30,17 @@ class InternalLeadController extends Controller
         'pending',
     ];
 
+    private const FOLLOW_UP_FILTERS = [
+        'overdue',
+        'today',
+        'unscheduled',
+    ];
+
     public function index(Request $request): View
     {
         $priority = strtolower(trim((string) $request->query('priority', '')));
         $status = strtolower(trim((string) $request->query('status', '')));
+        $followUp = strtolower(trim((string) $request->query('followup', '')));
         $search = trim((string) $request->query('q', ''));
 
         if (! in_array($priority, self::PRIORITIES, true)) {
@@ -41,6 +49,10 @@ class InternalLeadController extends Controller
 
         if (! in_array($status, self::STATUSES, true)) {
             $status = '';
+        }
+
+        if (! in_array($followUp, self::FOLLOW_UP_FILTERS, true)) {
+            $followUp = '';
         }
 
         if (mb_strlen($search) > 120) {
@@ -61,6 +73,8 @@ class InternalLeadController extends Controller
             'qualification_status',
             'qualification_reason',
             'status',
+            'last_follow_up_at',
+            'next_follow_up_at',
             'created_at',
         ]);
 
@@ -87,6 +101,28 @@ class InternalLeadController extends Controller
             }
         }
 
+        if ($followUp !== '') {
+            $jakartaNow = Carbon::now('Asia/Jakarta');
+            $nowUtc = $jakartaNow->copy()->utc();
+            $endTodayUtc = $jakartaNow->copy()->endOfDay()->utc();
+
+            $query->where(function (Builder $builder): void {
+                $builder->whereNull('status')
+                    ->orWhereNotIn('status', ['won', 'lost']);
+            });
+
+            if ($followUp === 'overdue') {
+                $query->whereNotNull('next_follow_up_at')
+                    ->where('next_follow_up_at', '<', $nowUtc);
+            } elseif ($followUp === 'today') {
+                $query->whereNotNull('next_follow_up_at')
+                    ->where('next_follow_up_at', '>=', $nowUtc)
+                    ->where('next_follow_up_at', '<=', $endTodayUtc);
+            } elseif ($followUp === 'unscheduled') {
+                $query->whereNull('next_follow_up_at');
+            }
+        }
+
         if ($search !== '') {
             $needle = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
 
@@ -100,8 +136,10 @@ class InternalLeadController extends Controller
         }
 
         $leads = $query
+            ->orderByRaw("CASE WHEN next_follow_up_at IS NOT NULL AND next_follow_up_at < NOW() AND COALESCE(status, 'new') NOT IN ('won','lost') THEN 0 ELSE 1 END")
             ->orderByRaw("CASE lead_score WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 WHEN 'monitor' THEN 3 ELSE 4 END")
-            ->latest()
+            ->orderByRaw('next_follow_up_at ASC NULLS LAST')
+            ->latest('created_at')
             ->paginate(20)
             ->withQueryString();
 
@@ -110,9 +148,12 @@ class InternalLeadController extends Controller
             'leads' => $leads,
             'priority' => $priority,
             'status' => $status,
+            'followUp' => $followUp,
             'search' => $search,
             'priorities' => self::PRIORITIES,
             'statuses' => self::STATUSES,
+            'followUpFilters' => self::FOLLOW_UP_FILTERS,
+            'nowJakarta' => Carbon::now('Asia/Jakarta'),
         ]);
     }
 
@@ -132,6 +173,7 @@ class InternalLeadController extends Controller
             'lead' => $lead,
             'priority' => $priority,
             'statuses' => self::STATUSES,
+            'nowJakarta' => Carbon::now('Asia/Jakarta'),
         ]);
     }
 
@@ -140,18 +182,44 @@ class InternalLeadController extends Controller
         $validated = $request->validate([
             'status' => ['required', 'in:'.implode(',', self::STATUSES)],
             'note' => ['nullable', 'string', 'max:1000'],
+            'next_follow_up_at' => ['nullable', 'date_format:Y-m-d\TH:i'],
         ]);
 
         $previousStatus = (string) ($lead->status ?: 'new');
         $nextStatus = (string) $validated['status'];
         $note = trim((string) ($validated['note'] ?? ''));
 
-        if ($previousStatus === $nextStatus && $note === '') {
+        $nextFollowUpAt = null;
+        if (! in_array($nextStatus, ['won', 'lost'], true) && ! empty($validated['next_follow_up_at'])) {
+            $nextFollowUpAt = Carbon::createFromFormat(
+                'Y-m-d\TH:i',
+                $validated['next_follow_up_at'],
+                'Asia/Jakarta'
+            )->utc();
+        }
+
+        $previousNextFollowUp = $lead->next_follow_up_at?->copy()->utc()->format('Y-m-d H:i');
+        $incomingNextFollowUp = $nextFollowUpAt?->format('Y-m-d H:i');
+
+        if (
+            $previousStatus === $nextStatus &&
+            $note === '' &&
+            $previousNextFollowUp === $incomingNextFollowUp
+        ) {
             return back()->with('status', 'Tidak ada perubahan yang disimpan.');
         }
 
-        DB::transaction(function () use ($request, $lead, $previousStatus, $nextStatus, $note): void {
+        DB::transaction(function () use (
+            $request,
+            $lead,
+            $previousStatus,
+            $nextStatus,
+            $note,
+            $nextFollowUpAt
+        ): void {
             $lead->status = $nextStatus;
+            $lead->last_follow_up_at = now();
+            $lead->next_follow_up_at = $nextFollowUpAt;
             $lead->save();
 
             Activity::query()->create([
@@ -161,6 +229,7 @@ class InternalLeadController extends Controller
                     'from' => $previousStatus,
                     'to' => $nextStatus,
                     'note' => $note !== '' ? $note : null,
+                    'next_follow_up_at' => $nextFollowUpAt?->toIso8601String(),
                     'user_id' => $request->user()?->id,
                     'user_name' => $request->user()?->name,
                     'user_role' => $request->user()?->role,
@@ -168,6 +237,6 @@ class InternalLeadController extends Controller
             ]);
         });
 
-        return back()->with('status', 'Status follow-up berhasil diperbarui.');
+        return back()->with('status', 'Status dan jadwal follow-up berhasil diperbarui.');
     }
 }
