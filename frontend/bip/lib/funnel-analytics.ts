@@ -3,6 +3,7 @@
 const API_BASE = 'https://api.drrkobe.com/api/v1';
 const SESSION_KEY = 'drrkobe_bip_funnel_session';
 const SENT_KEY = 'drrkobe_bip_funnel_sent';
+const inFlightEvents = new Set<string>();
 
 export type FunnelEventName =
   | 'diagnosis_started'
@@ -44,6 +45,8 @@ export function resetFunnelSession(): string {
     window.sessionStorage.removeItem(SENT_KEY);
   }
 
+  inFlightEvents.clear();
+
   return sessionId;
 }
 
@@ -83,7 +86,9 @@ export async function trackFunnelEvent(
   const sessionId = getFunnelSessionId();
   const storageKey = eventStorageKey(sessionId, event);
 
-  if (wasSent(storageKey)) return;
+  if (wasSent(storageKey) || inFlightEvents.has(storageKey)) return;
+
+  inFlightEvents.add(storageKey);
 
   try {
     const response = await fetch(`${API_BASE}/events`, {
@@ -107,5 +112,7 @@ export async function trackFunnelEvent(
     if (response.ok) markSent(storageKey);
   } catch {
     // Analytics tidak boleh mengganggu alur diagnosis utama.
+  } finally {
+    inFlightEvents.delete(storageKey);
   }
 }
