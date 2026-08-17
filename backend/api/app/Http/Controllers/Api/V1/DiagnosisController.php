@@ -25,15 +25,25 @@ class DiagnosisController extends Controller
             'jam_operasi' => ['required', 'integer', 'min:1', 'max:24'],
 
             'answers' => ['required', 'array'],
-            'answers.cepat_habis' => ['required', 'boolean'],
-            'answers.charging_lama' => ['required', 'boolean'],
-            'answers.isi_air' => ['required', 'integer', 'min:0', 'max:7'],
-            'answers.downtime' => ['required', 'boolean'],
-            'answers.charger_error' => ['sometimes', 'boolean'],
-            'answers.hydraulic_lambat' => ['sometimes', 'boolean'],
+            'answers.cepat_habis' => ['sometimes', 'nullable', 'boolean'],
+            'answers.charging_lama' => ['sometimes', 'nullable', 'boolean'],
+            'answers.isi_air' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:7'],
+            'answers.downtime' => ['sometimes', 'nullable', 'boolean'],
+            'answers.charger_error' => ['sometimes', 'nullable', 'boolean'],
+            'answers.hydraulic_lambat' => ['sometimes', 'nullable', 'boolean'],
+
+            'answers.fast_drain_duration' => ['sometimes', 'nullable', 'in:under_4,four_to_six,six_to_eight,over_eight,unknown'],
+            'answers.charging_duration' => ['sometimes', 'nullable', 'in:under_6,six_to_eight,eight_to_ten,over_ten,unknown'],
+            'answers.watering_frequency' => ['sometimes', 'nullable', 'in:never,less_than_weekly,once_weekly,twice_weekly,more_than_twice,unknown'],
+            'answers.downtime_frequency' => ['sometimes', 'nullable', 'in:never,once_twice,three_four,five_plus,unknown'],
+            'answers.charger_error_frequency' => ['sometimes', 'nullable', 'in:never,once,repeated,unknown'],
+            'answers.hydraulic_when_low' => ['sometimes', 'nullable', 'in:never,sometimes,often,unknown'],
+
             'answers.issues' => ['sometimes', 'array', 'max:10'],
-            'answers.issues.*' => ['string', 'max:80'],
+            'answers.issues.*' => ['string', 'max:120'],
         ]);
+
+        $validated['answers'] = $this->normalizeOperationalAnswers($validated['answers']);
 
         $cacheKey = 'diagnosis:' . $validated['session_id'];
 
@@ -67,10 +77,10 @@ class DiagnosisController extends Controller
         };
 
         $recommendation = match (true) {
-            $healthScore <= 40 => 'Assessment teknis segera direkomendasikan',
-            $healthScore <= 65 => 'Upgrade layak dipertimbangkan',
-            $healthScore <= 80 => 'Monitoring dan evaluasi kondisi battery',
-            default => 'Kondisi battery relatif baik',
+            $healthScore <= 40 => 'Pemeriksaan teknis lapangan perlu diprioritaskan',
+            $healthScore <= 65 => 'Pemeriksaan teknis direkomendasikan sebelum keputusan perubahan teknologi',
+            $healthScore <= 80 => 'Pantau kondisi battery dan verifikasi bila gejala meningkat',
+            default => 'Kondisi battery relatif baik berdasarkan data yang tersedia',
         };
 
         $confidence = $this->calculateConfidence($validated['answers']);
@@ -96,7 +106,7 @@ class DiagnosisController extends Controller
             'causes' => $causes,
             'confidence' => $confidence,
             'recommendation' => $recommendation,
-            'next_action' => 'Hubungi Technical Sales DRRKOBE untuk assessment',
+            'next_action' => 'Lanjutkan ke pemeriksaan teknis DRRKOBE bila diperlukan',
         ];
 
         Cache::put($cacheKey, $response, now()->addHour());
@@ -105,6 +115,61 @@ class DiagnosisController extends Controller
             'cached' => false,
             ...$response,
         ], 201);
+    }
+
+    private function normalizeOperationalAnswers(array $answers): array
+    {
+        if (array_key_exists('fast_drain_duration', $answers)) {
+            $answers['cepat_habis'] = match ($answers['fast_drain_duration']) {
+                'under_4' => true,
+                'four_to_six', 'six_to_eight', 'over_eight' => false,
+                default => null,
+            };
+        }
+
+        if (array_key_exists('charging_duration', $answers)) {
+            $answers['charging_lama'] = match ($answers['charging_duration']) {
+                'eight_to_ten', 'over_ten' => true,
+                'under_6', 'six_to_eight' => false,
+                default => null,
+            };
+        }
+
+        if (array_key_exists('watering_frequency', $answers)) {
+            $answers['isi_air'] = match ($answers['watering_frequency']) {
+                'never', 'less_than_weekly' => 0,
+                'once_weekly' => 1,
+                'twice_weekly' => 2,
+                'more_than_twice' => 3,
+                default => null,
+            };
+        }
+
+        if (array_key_exists('downtime_frequency', $answers)) {
+            $answers['downtime'] = match ($answers['downtime_frequency']) {
+                'three_four', 'five_plus' => true,
+                'never', 'once_twice' => false,
+                default => null,
+            };
+        }
+
+        if (array_key_exists('charger_error_frequency', $answers)) {
+            $answers['charger_error'] = match ($answers['charger_error_frequency']) {
+                'once', 'repeated' => true,
+                'never' => false,
+                default => null,
+            };
+        }
+
+        if (array_key_exists('hydraulic_when_low', $answers)) {
+            $answers['hydraulic_lambat'] = match ($answers['hydraulic_when_low']) {
+                'sometimes', 'often' => true,
+                'never' => false,
+                default => null,
+            };
+        }
+
+        return $answers;
     }
 
     private function generateMockCauses(int $umur, array $answers): array
@@ -118,21 +183,21 @@ class DiagnosisController extends Controller
             ];
         }
 
-        if (!empty($answers['cepat_habis'])) {
+        if (($answers['cepat_habis'] ?? null) === true) {
             $causes[] = [
                 'name' => 'Sulfation',
                 'prob' => 72,
             ];
         }
 
-        if (!empty($answers['charging_lama']) || !empty($answers['charger_error'])) {
+        if (($answers['charging_lama'] ?? null) === true || ($answers['charger_error'] ?? null) === true) {
             $causes[] = [
                 'name' => 'Charging Habit',
                 'prob' => 68,
             ];
         }
 
-        if (!empty($answers['downtime']) || !empty($answers['hydraulic_lambat'])) {
+        if (($answers['downtime'] ?? null) === true || ($answers['hydraulic_lambat'] ?? null) === true) {
             $causes[] = [
                 'name' => 'Cell Imbalance',
                 'prob' => 64,
