@@ -35,11 +35,18 @@ class InternalDashboardController extends Controller
         $leadCaptured = (int) $eventCounts->get('lead_captured', 0);
         $assessmentClicked = (int) $eventCounts->get('assessment_clicked', 0);
 
+        $validPriorities = ['hot', 'warm', 'monitor'];
+
         $leadPriority = [
             'hot' => Lead::query()->where('lead_score', 'hot')->count(),
             'warm' => Lead::query()->where('lead_score', 'warm')->count(),
             'monitor' => Lead::query()->where('lead_score', 'monitor')->count(),
-            'pending' => Lead::query()->whereNull('lead_score')->count(),
+            'pending' => Lead::query()
+                ->where(function ($query) use ($validPriorities): void {
+                    $query->whereNull('lead_score')
+                        ->orWhereNotIn('lead_score', $validPriorities);
+                })
+                ->count(),
         ];
 
         $recentLeads = Lead::query()
