@@ -32,6 +32,11 @@ Route::prefix('v1')->group(function () {
         'context',
     ]);
 
+    Route::get('/ai/diagnosis/{diagnosis}/status', [
+        AiDiagnosticController::class,
+        'status',
+    ]);
+
     Route::post('/ai/diagnosis/{diagnosis}/analyze', [
         AiDiagnosticController::class,
         'analyze',
