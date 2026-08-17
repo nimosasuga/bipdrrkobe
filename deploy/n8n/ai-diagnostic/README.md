@@ -7,21 +7,23 @@ Tujuan: mempercepat analisis tambahan tanpa mengubah Health Score deterministic 
 ```text
 Webhook
 → Build AI Prompt
-→ Message a model
+→ Basic LLM Chain
 → Parse AI JSON
+
+OpenRouter Chat Model
+└──→ Chat Model pada Basic LLM Chain
 ```
 
-Jangan menambah node lain pada Phase 3.
+Jangan menambah Agent, Memory, Tools, RAG, atau node lain pada Phase 3.
 
 ## 1. Webhook
 
 - Method: `POST`
 - Path: `drrkobe-ai-diagnostic`
-- Authentication: tetap mengikuti konfigurasi aktif saat ini; hardening auth dikerjakan pada fase security berikutnya.
 - Respond: `When Last Node Finishes`
 - Response Data: `First Entry JSON`
 
-Payload Laravel sekarang tetap menggunakan envelope:
+Payload Laravel tetap menggunakan envelope:
 
 ```json
 {
@@ -47,27 +49,31 @@ Node type: `Code`
 
 - Mode: `Run Once for Each Item`
 - Gunakan isi file `build-ai-prompt.js` pada folder ini.
-- Output node harus hanya memiliki field `prompt`.
-- Karena mode `Run Once for Each Item`, return harus satu object:
+- Output node hanya field `prompt`.
+- Return harus satu object:
 
 ```javascript
 return { json: { prompt } };
 ```
 
-Jangan gunakan array `return [{ ... }]` pada mode ini.
+Prompt memakai urutan bukti: `observations` → `reference.rules` → `issues`. Jika keluhan bertentangan dengan observasi, observasi menjadi acuan utama.
 
-## 3. Message a model
+## 3. Basic LLM Chain + OpenRouter
 
-Gunakan model cepat yang sudah aktif pada workflow.
+Basic LLM Chain:
 
-Setelan yang direkomendasikan bila tersedia pada node/provider:
+- Prompt source: `Define Below`
+- Prompt: `{{ $json.prompt }}`
 
-- Temperature: `0.2`
-- Max output tokens: `900`
-- Response format: JSON / structured output bila provider mendukung tanpa menambah latency besar.
-- Content/Input: Expression `$json.prompt`
+OpenRouter Chat Model:
 
-Jangan menggunakan literal `{{ $json.prompt }}` pada mode Fixed.
+- Model awal: `openai/gpt-4.1-mini`
+- Temperature: `0.1`
+- Maximum Number of Tokens: `500`
+- Max Retries: `0`
+- Response Format: `JSON Object` bila tersedia dan stabil.
+
+Jangan menurunkan max token ke `350`; pengujian menunjukkan output diagnosis dapat terpotong dan menyebabkan workflow HTTP 500.
 
 ## 4. Parse AI JSON
 
@@ -75,25 +81,27 @@ Node type: `Code`
 
 - Mode: `Run Once for Each Item`
 - Gunakan isi file `parse-ai-json.js` pada folder ini.
-- Return juga harus satu object, bukan array.
-- Parser mendukung output langsung, `message.content`, dan `choices[0].message.content`.
-- Parser melindungi hasil `null`/non-object dan membatasi jumlah item serta panjang teks agar response ke Laravel tetap kecil dan konsisten.
+- Return harus satu object, bukan array.
+- Parser mendukung output langsung, `message.content`, `choices[0].message.content`, dan output chain.
+- Output tetap memakai field yang sama untuk kompatibilitas Laravel.
+- Batas compact: 2 probable causes, 2 findings, 2 actions, dan 2 limitations.
 
 ## Target latency
 
-Target normal untuk jalur n8n + model: `2–6 detik` bila provider/model sedang normal.
+Target normal jalur n8n + model: `2–6 detik` bila provider sedang normal.
 
 Phase 3 dianggap lulus bila:
 
-1. Health Score tampil tanpa menunggu AI.
+1. Health Score tetap deterministic dan tidak diubah AI.
 2. AI result tersimpan normal ke diagnosis.
-3. Output JSON tidak berubah bentuk.
+3. Output JSON tetap kompatibel dengan Laravel.
 4. Tiga test berturut-turut tidak error.
-5. Median waktu `POST /ai/diagnosis/{id}/analyze` berada di bawah 6 detik pada kondisi provider normal.
+5. Median `POST /ai/diagnosis/{id}/analyze` di bawah 6 detik pada kondisi provider normal.
+6. Output tidak mengarang telemetry, fault code, umur sisa, harga, atau keputusan pembelian.
 
 ## Pengukuran dari VPS
 
-Gunakan diagnosis ID baru yang benar, jangan literal `DIAGNOSIS_ID`:
+Gunakan diagnosis ID yang valid:
 
 ```bash
 DIAGNOSIS_ID=$(docker compose exec -T postgres \
@@ -112,9 +120,7 @@ curl -sS -o /tmp/drrkobe-ai.json \
 cat /tmp/drrkobe-ai.json
 ```
 
-Lakukan pada tiga diagnosis baru dan catat `TOTAL`.
-
-Jika `HTTP=500` muncul tepat sekitar 20 detik, Laravel mencapai timeout n8n. Periksa execution n8n paling baru dan node pertama yang gagal sebelum menaikkan timeout.
+Lakukan tiga kali dan catat `TOTAL` serta validitas JSON.
 
 ## Batas Phase 3
 
@@ -127,4 +133,4 @@ Tidak mengubah:
 - PostgreSQL / Redis
 - retry/fallback state
 
-Retry, failure state, dan `ai_status` dikerjakan pada Phase 4.
+Retry, failure state, `ai_status`, dan hardening endpoint dikerjakan pada Phase 4.
