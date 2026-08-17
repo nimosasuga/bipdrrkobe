@@ -32,6 +32,8 @@ class Lead extends Model
         'ai_summary',
         'session_id',
         'status',
+        'last_follow_up_at',
+        'next_follow_up_at',
         'source',
         'spreadsheet_sync_status',
         'spreadsheet_synced_at',
@@ -45,6 +47,8 @@ class Lead extends Model
             'jam_operasional' => 'integer',
             'health_score' => 'integer',
             'qualified_at' => 'datetime',
+            'last_follow_up_at' => 'datetime',
+            'next_follow_up_at' => 'datetime',
             'spreadsheet_synced_at' => 'datetime',
         ];
     }
