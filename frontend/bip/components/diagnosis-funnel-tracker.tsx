@@ -12,6 +12,8 @@ export default function DiagnosisFunnelTracker() {
   useEffect(() => {
     if (pathname !== DIAGNOSIS_PATH) return;
 
+    let currentDiagnosisId: string | null = null;
+
     void trackFunnelEvent('diagnosis_started', {
       metadata: { path: DIAGNOSIS_PATH },
     });
@@ -35,12 +37,40 @@ export default function DiagnosisFunnelTracker() {
       const button = target.closest('button');
       if (!button?.textContent?.includes('Mulai Diagnosis Baru')) return;
 
+      currentDiagnosisId = null;
       resetFunnelSession();
       window.setTimeout(() => {
         void trackFunnelEvent('diagnosis_started', {
           metadata: { path: DIAGNOSIS_PATH, restarted: true },
         });
       }, 0);
+    };
+
+    const detectViewedSteps = () => {
+      if (!currentDiagnosisId) return;
+
+      const content = document.querySelector('main')?.textContent ?? '';
+
+      if (content.includes('STEP 5 / 9')) {
+        void trackFunnelEvent('step_5_viewed', {
+          diagnosisId: currentDiagnosisId,
+          metadata: { step: 5 },
+        });
+      }
+
+      if (content.includes('STEP 7 / 9')) {
+        void trackFunnelEvent('step_7_viewed', {
+          diagnosisId: currentDiagnosisId,
+          metadata: { step: 7 },
+        });
+      }
+
+      if (content.includes('STEP 8 / 9')) {
+        void trackFunnelEvent('step_8_viewed', {
+          diagnosisId: currentDiagnosisId,
+          metadata: { step: 8 },
+        });
+      }
     };
 
     const originalFetch = window.fetch.bind(window);
@@ -61,6 +91,8 @@ export default function DiagnosisFunnelTracker() {
           .then((payload) => {
             if (!payload?.diagnosis_id) return;
 
+            currentDiagnosisId = payload.diagnosis_id;
+
             return trackFunnelEvent('diagnosis_completed', {
               diagnosisId: payload.diagnosis_id,
               metadata: {
@@ -75,11 +107,15 @@ export default function DiagnosisFunnelTracker() {
       return response;
     };
 
+    const observer = new MutationObserver(detectViewedSteps);
+
     window.fetch = wrappedFetch;
     document.addEventListener('change', handleModelChange);
     document.addEventListener('click', handleResetClick);
+    observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
+      observer.disconnect();
       document.removeEventListener('change', handleModelChange);
       document.removeEventListener('click', handleResetClick);
       if (window.fetch === wrappedFetch) window.fetch = originalFetch;
