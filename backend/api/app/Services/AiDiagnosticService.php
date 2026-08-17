@@ -8,9 +8,12 @@ use App\Models\Diagnosis;
 use App\Models\DiagnosticRule;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 class AiDiagnosticService
 {
+    public const MAX_ATTEMPTS = 3;
+
     public function buildContext(Diagnosis $diagnosis): array
     {
         $diagnosis->load('forkliftModel.brand');
@@ -70,7 +73,6 @@ class AiDiagnosticService
                 'answers' => $diagnosis->answers_json,
                 'health_score' => $diagnosis->health_score,
             ],
-
             'forklift' => [
                 'brand' => $brand?->name,
                 'model' => $model?->name,
@@ -80,7 +82,6 @@ class AiDiagnosticService
                 'battery_voltage' => $model?->battery_voltage,
                 'battery_capacity_ah' => $model?->battery_capacity_ah,
             ],
-
             'battery_specs' => $batterySpecs->map(fn ($item) => [
                 'battery_code' => $item->battery_code,
                 'battery_type' => $item->battery_type,
@@ -89,7 +90,6 @@ class AiDiagnosticService
                 'cell_count' => $item->cell_count,
                 'recommended_charge_hours' => $item->recommended_charge_hours,
             ])->values(),
-
             'charger_specs' => $chargerSpecs->map(fn ($item) => [
                 'charger_code' => $item->charger_code,
                 'charger_type' => $item->charger_type,
@@ -98,7 +98,6 @@ class AiDiagnosticService
                 'output_current_a' => $item->output_current_a,
                 'compatible_battery_type' => $item->compatible_battery_type,
             ])->values(),
-
             'diagnostic_rules' => $rules->map(fn ($rule) => [
                 'category' => $rule->category,
                 'symptom_key' => $rule->symptom_key,
@@ -114,8 +113,8 @@ class AiDiagnosticService
     }
 
     /**
-     * Compact context used only for the n8n AI call.
-     * The full buildContext() remains the source for API result/debug data.
+     * Compact, verified context used only for the n8n AI call.
+     * The full buildContext() remains available for API result/debug data.
      */
     public function buildAiContext(Diagnosis $diagnosis): array
     {
@@ -200,51 +199,121 @@ class AiDiagnosticService
 
     public function analyze(Diagnosis $diagnosis): array
     {
-        $url = config('services.n8n.ai_diagnostic_url');
+        $diagnosis->refresh();
 
-        if (!$url) {
-            throw new RuntimeException(
-                'N8N AI diagnostic URL is not configured.'
-            );
+        if ($diagnosis->ai_status === 'completed' && $diagnosis->ai_analyzed_at !== null) {
+            return $this->resultFromDiagnosis($diagnosis);
         }
 
-        $response = Http::asJson()
-            ->acceptJson()
-            ->connectTimeout(3)
-            ->timeout(20)
-            ->post($url, [
-                'context' => $this->buildAiContext($diagnosis),
-            ]);
-
-        if ($response->failed()) {
-            throw new RuntimeException(
-                'AI diagnostic workflow failed with HTTP '
-                . $response->status()
-            );
+        if (
+            $diagnosis->ai_status === 'processing'
+            && $diagnosis->ai_last_attempt_at?->greaterThan(now()->subSeconds(30))
+        ) {
+            throw new RuntimeException('AI diagnostic is already processing.');
         }
 
-        $result = $response->json();
-
-        if (!is_array($result)) {
-            throw new RuntimeException(
-                'AI diagnostic response is invalid.'
-            );
+        if (!$this->canRetry($diagnosis) && $diagnosis->ai_status === 'failed') {
+            throw new RuntimeException('AI diagnostic retry limit reached.');
         }
 
-        $diagnosis->update([
-            'ai_summary' => $result['summary'] ?? null,
-            'ai_probable_causes' => $result['probable_causes'] ?? [],
-            'ai_technical_findings' => $result['technical_findings'] ?? [],
-            'ai_recommended_actions' => $result['recommended_actions'] ?? [],
-            'ai_limitations' => $result['limitations'] ?? [],
-            'ai_urgency' => $result['urgency'] ?? null,
-            'ai_confidence' => isset($result['confidence'])
-                ? (int) $result['confidence']
-                : null,
-            'ai_analyzed_at' => now(),
-        ]);
+        $diagnosis->forceFill([
+            'ai_status' => 'processing',
+            'ai_attempts' => ((int) $diagnosis->ai_attempts) + 1,
+            'ai_error' => null,
+            'ai_last_attempt_at' => now(),
+        ])->save();
 
-        return $result;
+        try {
+            $url = config('services.n8n.ai_diagnostic_url');
+
+            if (!$url) {
+                throw new RuntimeException('N8N AI diagnostic URL is not configured.');
+            }
+
+            $response = Http::asJson()
+                ->acceptJson()
+                ->connectTimeout(3)
+                ->timeout(20)
+                ->post($url, [
+                    'context' => $this->buildAiContext($diagnosis),
+                ]);
+
+            if ($response->failed()) {
+                throw new RuntimeException(
+                    'AI diagnostic workflow failed with HTTP '
+                    . $response->status()
+                );
+            }
+
+            $result = $response->json();
+
+            if (!is_array($result)) {
+                throw new RuntimeException('AI diagnostic response is invalid.');
+            }
+
+            $diagnosis->forceFill([
+                'ai_summary' => $result['summary'] ?? null,
+                'ai_probable_causes' => $result['probable_causes'] ?? [],
+                'ai_technical_findings' => $result['technical_findings'] ?? [],
+                'ai_recommended_actions' => $result['recommended_actions'] ?? [],
+                'ai_limitations' => $result['limitations'] ?? [],
+                'ai_urgency' => $result['urgency'] ?? null,
+                'ai_confidence' => isset($result['confidence'])
+                    ? (int) $result['confidence']
+                    : null,
+                'ai_analyzed_at' => now(),
+                'ai_status' => 'completed',
+                'ai_error' => null,
+            ])->save();
+
+            return $result;
+        } catch (Throwable $exception) {
+            $diagnosis->forceFill([
+                'ai_status' => 'failed',
+                'ai_error' => mb_substr($exception->getMessage(), 0, 500),
+            ])->save();
+
+            throw $exception;
+        }
+    }
+
+    public function canRetry(Diagnosis $diagnosis): bool
+    {
+        return (int) $diagnosis->ai_attempts < self::MAX_ATTEMPTS;
+    }
+
+    public function statusPayload(Diagnosis $diagnosis): array
+    {
+        $diagnosis->refresh();
+        $status = $diagnosis->ai_status ?: 'pending';
+
+        return [
+            'status' => $status,
+            'analyzed' => $status === 'completed' && $diagnosis->ai_analyzed_at !== null,
+            'attempts' => (int) $diagnosis->ai_attempts,
+            'max_attempts' => self::MAX_ATTEMPTS,
+            'retryable' => $status === 'failed' && $this->canRetry($diagnosis),
+            'message' => match ($status) {
+                'processing' => 'Analisis utama selesai. Pemeriksaan pola masalah sedang dilengkapi.',
+                'failed' => 'Analisis tambahan belum tersedia. Hasil utama tetap dapat digunakan.',
+                'completed' => 'Analisis tambahan selesai.',
+                default => 'Analisis utama selesai. Pemeriksaan pola masalah sedang disiapkan.',
+            },
+            ...$this->resultFromDiagnosis($diagnosis),
+        ];
+    }
+
+    private function resultFromDiagnosis(Diagnosis $diagnosis): array
+    {
+        return [
+            'summary' => $diagnosis->ai_summary,
+            'probable_causes' => $diagnosis->ai_probable_causes ?? [],
+            'technical_findings' => $diagnosis->ai_technical_findings ?? [],
+            'recommended_actions' => $diagnosis->ai_recommended_actions ?? [],
+            'limitations' => $diagnosis->ai_limitations ?? [],
+            'urgency' => $diagnosis->ai_urgency,
+            'confidence' => $diagnosis->ai_confidence,
+        ];
     }
 
     private function normaliseAiObservations(array $answers): array
@@ -332,7 +401,6 @@ class AiDiagnosticService
         return match ($key) {
             'battery_type' => is_string($expected)
                 && ($diagnosis['battery_type'] ?? null) === $expected,
-
             'charging_hours_min' => $this->rangeMeetsMinimum(
                 $this->answerRange($answers['charging_duration'] ?? null, [
                     'under_6' => [0, 6],
@@ -351,7 +419,6 @@ class AiDiagnosticService
                 ]),
                 $expected
             ),
-
             'runtime_hours_min', 'battery_runtime_hours_min' => $this->rangeMeetsMinimum(
                 $this->answerRange($answers['fast_drain_duration'] ?? null, [
                     'under_4' => [0, 4],
@@ -370,7 +437,6 @@ class AiDiagnosticService
                 ]),
                 $expected
             ),
-
             'watering_per_week_min' => $this->rangeMeetsMinimum(
                 $this->answerRange($answers['watering_frequency'] ?? null, [
                     'never' => [0, 0],
@@ -391,7 +457,6 @@ class AiDiagnosticService
                 ]),
                 $expected
             ),
-
             'downtime_occurrences_min' => $this->rangeMeetsMinimum(
                 $this->answerRange($answers['downtime_frequency'] ?? null, [
                     'never' => [0, 0],
@@ -410,7 +475,6 @@ class AiDiagnosticService
                 ]),
                 $expected
             ),
-
             'age_years_min', 'battery_age_years_min' => $this->numberMeetsMinimum(
                 $diagnosis['umur_battery'] ?? null,
                 $expected
@@ -435,12 +499,10 @@ class AiDiagnosticService
                 $diagnosis['jam_operasi'] ?? null,
                 $expected
             ),
-
             'cepat_habis', 'charging_lama', 'downtime', 'charger_error', 'hydraulic_lambat' =>
                 is_bool($expected)
                 && array_key_exists($key, $answers)
                 && $answers[$key] === $expected,
-
             default => false,
         };
     }
