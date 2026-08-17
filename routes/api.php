@@ -1,0 +1,57 @@
+<?php
+
+use App\Http\Controllers\Api\V1\AiDiagnosticController;
+use App\Http\Controllers\Api\V1\DiagnosisController;
+use App\Http\Controllers\Api\V1\SyncController;
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1')->group(function () {
+
+    Route::post('/diagnose', [
+        DiagnosisController::class,
+        'store'
+    ]);
+
+    Route::get('/ai/diagnosis/{diagnosis}/context', [
+        AiDiagnosticController::class,
+        'context'
+    ]);
+
+Route::post('/ai/diagnosis/{diagnosis}/analyze', [
+    AiDiagnosticController::class,
+    'analyze'
+]);
+
+    Route::prefix('sync')->group(function () {
+
+        Route::post('/brands', [
+            SyncController::class,
+            'brands'
+        ]);
+
+        Route::post('/forklift-models', [
+            SyncController::class,
+            'forkliftModels'
+        ]);
+
+        Route::post('/batteries', [
+            SyncController::class,
+            'batteries'
+        ]);
+
+        Route::post('/chargers', [
+            SyncController::class,
+            'chargers'
+        ]);
+
+        Route::post('/diagnostic-rules', [
+            SyncController::class,
+            'diagnosticRules'
+        ]);
+    });
+Route::get('/diagnosis/{diagnosis}/result', [
+    DiagnosisController::class,
+    'result'
+]);
+
+});
