@@ -48,6 +48,13 @@ Node type: `Code`
 - Mode: `Run Once for Each Item`
 - Gunakan isi file `build-ai-prompt.js` pada folder ini.
 - Output node harus hanya memiliki field `prompt`.
+- Karena mode `Run Once for Each Item`, return harus satu object:
+
+```javascript
+return { json: { prompt } };
+```
+
+Jangan gunakan array `return [{ ... }]` pada mode ini.
 
 ## 3. Message a model
 
@@ -68,7 +75,9 @@ Node type: `Code`
 
 - Mode: `Run Once for Each Item`
 - Gunakan isi file `parse-ai-json.js` pada folder ini.
-- Parser membatasi jumlah item dan panjang teks agar response ke Laravel tetap kecil dan konsisten.
+- Return juga harus satu object, bukan array.
+- Parser mendukung output langsung, `message.content`, dan `choices[0].message.content`.
+- Parser melindungi hasil `null`/non-object dan membatasi jumlah item serta panjang teks agar response ke Laravel tetap kecil dan konsisten.
 
 ## Target latency
 
@@ -84,19 +93,28 @@ Phase 3 dianggap lulus bila:
 
 ## Pengukuran dari VPS
 
-Gunakan diagnosis ID baru:
+Gunakan diagnosis ID baru yang benar, jangan literal `DIAGNOSIS_ID`:
 
 ```bash
+DIAGNOSIS_ID=$(docker compose exec -T postgres \
+  psql -U drrkobe -d drrkobe -tAc \
+  "SELECT id FROM diagnoses ORDER BY created_at DESC LIMIT 1;" \
+  | tr -d '[:space:]')
+
+echo "$DIAGNOSIS_ID"
+
 curl -sS -o /tmp/drrkobe-ai.json \
   -w 'HTTP=%{http_code} TOTAL=%{time_total}s CONNECT=%{time_connect}s STARTTRANSFER=%{time_starttransfer}s\n' \
   -X POST \
   -H 'Accept: application/json' \
-  https://api.drrkobe.com/api/v1/ai/diagnosis/DIAGNOSIS_ID/analyze
+  "https://api.drrkobe.com/api/v1/ai/diagnosis/${DIAGNOSIS_ID}/analyze"
 
 cat /tmp/drrkobe-ai.json
 ```
 
 Lakukan pada tiga diagnosis baru dan catat `TOTAL`.
+
+Jika `HTTP=500` muncul tepat sekitar 20 detik, Laravel mencapai timeout n8n. Periksa execution n8n paling baru dan node pertama yang gagal sebelum menaikkan timeout.
 
 ## Batas Phase 3
 
