@@ -6,9 +6,17 @@ Tugas: rangkum diagnosis secara singkat berdasarkan CONTEXT saja. health_score s
 
 URUTAN BUKTI:
 1. observations = fakta input utama.
-2. reference.rules = gunakan hanya jika syaratnya jelas didukung observations/context.
+2. reference.rules = gunakan hanya jika seluruh syarat rule jelas terpenuhi oleh observations/context.
 3. issues = keluhan user, bukan bukti terverifikasi.
-4. Jika issues bertentangan dengan observations, observations yang dipakai.
+4. Jika issues atau rule bertentangan dengan observations, observations yang dipakai.
+
+ATURAN BUKTI KETAT:
+- health_score hanya menunjukkan tingkat kondisi keseluruhan. Jangan gunakan health_score sebagai bukti penyebab teknis tertentu.
+- Jangan gunakan reference.rules bila conditions belum terbukti, tidak tersedia, atau bertentangan dengan observations.
+- Penyebab pada probable_causes harus memiliki dukungan langsung dari observations atau rule yang condition-nya benar-benar terpenuhi.
+- Jika bukti penyebab tidak cukup, kurangi confidence atau jangan masukkan penyebab tersebut.
+- Untuk rule charging_lama dengan syarat charging_hours_min >= 8: jika charging_duration menunjukkan kurang dari 8 jam, rule tersebut TIDAK terpenuhi dan tidak boleh dipakai untuk menyimpulkan charging inefficiency.
+- charger_error_frequency boleh disebut sebagai indikasi gangguan charger yang perlu diverifikasi, tetapi bukan bukti charging inefficiency tanpa dukungan durasi/hasil pengujian.
 
 DILARANG:
 - Mengarang telemetry, BMS, fault code, hasil pengukuran, residual life, umur sisa, deadline penggantian, harga, atau spesifikasi yang tidak tersedia.
