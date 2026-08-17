@@ -124,14 +124,7 @@ class AiDiagnosticService
             ? $context['diagnosis']['answers']
             : [];
 
-        $observations = array_filter([
-            'fast_drain_duration' => $this->knownAnswer($answers['fast_drain_duration'] ?? null),
-            'charging_duration' => $this->knownAnswer($answers['charging_duration'] ?? null),
-            'watering_frequency' => $this->knownAnswer($answers['watering_frequency'] ?? null),
-            'downtime_frequency' => $this->knownAnswer($answers['downtime_frequency'] ?? null),
-            'charger_error_frequency' => $this->knownAnswer($answers['charger_error_frequency'] ?? null),
-            'hydraulic_when_low' => $this->knownAnswer($answers['hydraulic_when_low'] ?? null),
-        ], fn ($value) => $value !== null);
+        $observations = $this->normaliseAiObservations($answers);
 
         $issues = collect($answers['issues'] ?? [])
             ->filter(fn ($value) => is_string($value) && trim($value) !== '')
@@ -164,6 +157,7 @@ class AiDiagnosticService
             ->all();
 
         $rules = collect($context['diagnostic_rules'] ?? [])
+            ->filter(fn ($rule) => is_array($rule) && $this->ruleIsApplicable($rule, $answers, $context))
             ->take(6)
             ->map(fn ($rule) => array_filter([
                 'symptom' => $rule['symptom_key'] ?? null,
@@ -251,6 +245,247 @@ class AiDiagnosticService
         ]);
 
         return $result;
+    }
+
+    private function normaliseAiObservations(array $answers): array
+    {
+        $maps = [
+            'fast_drain_duration' => [
+                'under_4' => 'battery_runtime_less_than_4_hours',
+                'four_to_six' => 'battery_runtime_4_to_6_hours',
+                'six_to_eight' => 'battery_runtime_6_to_8_hours',
+                'over_eight' => 'battery_runtime_more_than_8_hours',
+            ],
+            'charging_duration' => [
+                'under_6' => 'charging_duration_less_than_6_hours',
+                'six_to_eight' => 'charging_duration_6_to_8_hours',
+                'eight_to_ten' => 'charging_duration_8_to_10_hours',
+                'over_ten' => 'charging_duration_more_than_10_hours',
+            ],
+            'watering_frequency' => [
+                'never' => 'water_refill_never',
+                'less_than_weekly' => 'water_refill_less_than_once_per_week',
+                'once_weekly' => 'water_refill_once_per_week',
+                'twice_weekly' => 'water_refill_twice_per_week',
+                'more_than_twice' => 'water_refill_more_than_twice_per_week',
+            ],
+            'downtime_frequency' => [
+                'never' => 'battery_or_charger_downtime_not_observed',
+                'once_twice' => 'battery_or_charger_downtime_1_to_2_occurrences',
+                'three_four' => 'battery_or_charger_downtime_3_to_4_occurrences',
+                'five_plus' => 'battery_or_charger_downtime_5_or_more_occurrences',
+            ],
+            'charger_error_frequency' => [
+                'never' => 'charger_error_not_observed',
+                'once' => 'charger_error_observed_once',
+                'repeated' => 'charger_error_observed_repeatedly',
+            ],
+            'hydraulic_when_low' => [
+                'never' => 'hydraulic_slowdown_not_observed_when_battery_low',
+                'sometimes' => 'hydraulic_slowdown_sometimes_when_battery_low',
+                'often' => 'hydraulic_slowdown_often_when_battery_low',
+            ],
+        ];
+
+        $observations = [];
+
+        foreach ($maps as $key => $values) {
+            $answer = $this->knownAnswer($answers[$key] ?? null);
+
+            if ($answer !== null && isset($values[$answer])) {
+                $observations[$key] = $values[$answer];
+            }
+        }
+
+        return $observations;
+    }
+
+    private function ruleIsApplicable(array $rule, array $answers, array $context): bool
+    {
+        $conditions = $rule['conditions'] ?? [];
+
+        if ($conditions === null || $conditions === []) {
+            return true;
+        }
+
+        if (!is_array($conditions) || array_is_list($conditions)) {
+            return false;
+        }
+
+        foreach ($conditions as $key => $expected) {
+            if (!$this->conditionIsSatisfied((string) $key, $expected, $answers, $context)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function conditionIsSatisfied(
+        string $key,
+        mixed $expected,
+        array $answers,
+        array $context
+    ): bool {
+        $diagnosis = $context['diagnosis'] ?? [];
+
+        return match ($key) {
+            'battery_type' => is_string($expected)
+                && ($diagnosis['battery_type'] ?? null) === $expected,
+
+            'charging_hours_min' => $this->rangeMeetsMinimum(
+                $this->answerRange($answers['charging_duration'] ?? null, [
+                    'under_6' => [0, 6],
+                    'six_to_eight' => [6, 8],
+                    'eight_to_ten' => [8, 10],
+                    'over_ten' => [10, null],
+                ]),
+                $expected
+            ),
+            'charging_hours_max' => $this->rangeMeetsMaximum(
+                $this->answerRange($answers['charging_duration'] ?? null, [
+                    'under_6' => [0, 6],
+                    'six_to_eight' => [6, 8],
+                    'eight_to_ten' => [8, 10],
+                    'over_ten' => [10, null],
+                ]),
+                $expected
+            ),
+
+            'runtime_hours_min', 'battery_runtime_hours_min' => $this->rangeMeetsMinimum(
+                $this->answerRange($answers['fast_drain_duration'] ?? null, [
+                    'under_4' => [0, 4],
+                    'four_to_six' => [4, 6],
+                    'six_to_eight' => [6, 8],
+                    'over_eight' => [8, null],
+                ]),
+                $expected
+            ),
+            'runtime_hours_max', 'battery_runtime_hours_max' => $this->rangeMeetsMaximum(
+                $this->answerRange($answers['fast_drain_duration'] ?? null, [
+                    'under_4' => [0, 4],
+                    'four_to_six' => [4, 6],
+                    'six_to_eight' => [6, 8],
+                    'over_eight' => [8, null],
+                ]),
+                $expected
+            ),
+
+            'watering_per_week_min' => $this->rangeMeetsMinimum(
+                $this->answerRange($answers['watering_frequency'] ?? null, [
+                    'never' => [0, 0],
+                    'less_than_weekly' => [0, 1],
+                    'once_weekly' => [1, 1],
+                    'twice_weekly' => [2, 2],
+                    'more_than_twice' => [3, null],
+                ]),
+                $expected
+            ),
+            'watering_per_week_max' => $this->rangeMeetsMaximum(
+                $this->answerRange($answers['watering_frequency'] ?? null, [
+                    'never' => [0, 0],
+                    'less_than_weekly' => [0, 1],
+                    'once_weekly' => [1, 1],
+                    'twice_weekly' => [2, 2],
+                    'more_than_twice' => [3, null],
+                ]),
+                $expected
+            ),
+
+            'downtime_occurrences_min' => $this->rangeMeetsMinimum(
+                $this->answerRange($answers['downtime_frequency'] ?? null, [
+                    'never' => [0, 0],
+                    'once_twice' => [1, 2],
+                    'three_four' => [3, 4],
+                    'five_plus' => [5, null],
+                ]),
+                $expected
+            ),
+            'downtime_occurrences_max' => $this->rangeMeetsMaximum(
+                $this->answerRange($answers['downtime_frequency'] ?? null, [
+                    'never' => [0, 0],
+                    'once_twice' => [1, 2],
+                    'three_four' => [3, 4],
+                    'five_plus' => [5, null],
+                ]),
+                $expected
+            ),
+
+            'age_years_min', 'battery_age_years_min' => $this->numberMeetsMinimum(
+                $diagnosis['umur_battery'] ?? null,
+                $expected
+            ),
+            'age_years_max', 'battery_age_years_max' => $this->numberMeetsMaximum(
+                $diagnosis['umur_battery'] ?? null,
+                $expected
+            ),
+            'shift_per_day_min', 'shift_min' => $this->numberMeetsMinimum(
+                $diagnosis['shift'] ?? null,
+                $expected
+            ),
+            'shift_per_day_max', 'shift_max' => $this->numberMeetsMaximum(
+                $diagnosis['shift'] ?? null,
+                $expected
+            ),
+            'operating_hours_per_day_min', 'operating_hours_min' => $this->numberMeetsMinimum(
+                $diagnosis['jam_operasi'] ?? null,
+                $expected
+            ),
+            'operating_hours_per_day_max', 'operating_hours_max' => $this->numberMeetsMaximum(
+                $diagnosis['jam_operasi'] ?? null,
+                $expected
+            ),
+
+            'cepat_habis', 'charging_lama', 'downtime', 'charger_error', 'hydraulic_lambat' =>
+                is_bool($expected)
+                && array_key_exists($key, $answers)
+                && $answers[$key] === $expected,
+
+            default => false,
+        };
+    }
+
+    private function answerRange(mixed $answer, array $ranges): ?array
+    {
+        if (!is_string($answer) || $answer === 'unknown' || !isset($ranges[$answer])) {
+            return null;
+        }
+
+        return $ranges[$answer];
+    }
+
+    private function rangeMeetsMinimum(?array $range, mixed $expected): bool
+    {
+        if ($range === null || !is_numeric($expected)) {
+            return false;
+        }
+
+        return is_numeric($range[0] ?? null)
+            && (float) $range[0] >= (float) $expected;
+    }
+
+    private function rangeMeetsMaximum(?array $range, mixed $expected): bool
+    {
+        if ($range === null || !is_numeric($expected)) {
+            return false;
+        }
+
+        return is_numeric($range[1] ?? null)
+            && (float) $range[1] <= (float) $expected;
+    }
+
+    private function numberMeetsMinimum(mixed $actual, mixed $expected): bool
+    {
+        return is_numeric($actual)
+            && is_numeric($expected)
+            && (float) $actual >= (float) $expected;
+    }
+
+    private function numberMeetsMaximum(mixed $actual, mixed $expected): bool
+    {
+        return is_numeric($actual)
+            && is_numeric($expected)
+            && (float) $actual <= (float) $expected;
     }
 
     private function knownAnswer(mixed $value): mixed
