@@ -27,8 +27,14 @@ type DiagnosisResponse = {
   recommendation: string;
   causes: Cause[];
 };
+type AiStatus = 'pending' | 'processing' | 'completed' | 'failed';
 type AiResult = {
+  status: AiStatus;
   analyzed: boolean;
+  attempts: number;
+  max_attempts: number;
+  retryable: boolean;
+  message: string;
   summary: string | null;
   probable_causes: Array<{ cause: string; confidence: number; reason: string }>;
   technical_findings: string[];
@@ -146,6 +152,7 @@ export default function DiagnosisFormPage() {
   const [chargingCostPerUnitMonth, setChargingCostPerUnitMonth] = useState(0);
   const [loadingModels, setLoadingModels] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [aiRetrying, setAiRetrying] = useState(false);
   const [error, setError] = useState('');
   const [diagnosis, setDiagnosis] = useState<DiagnosisResponse | null>(null);
   const [diagnosisId, setDiagnosisId] = useState<string | null>(null);
@@ -222,39 +229,83 @@ export default function DiagnosisFormPage() {
 
   useEffect(() => {
     if (!diagnosisId || aiRequested.current) return;
+
     aiRequested.current = true;
     let stopped = false;
     let timer: ReturnType<typeof setInterval> | null = null;
 
-    const refresh = async () => {
+    const refreshStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE}/diagnosis/${diagnosisId}/result`, { headers: { Accept: 'application/json' } });
+        const response = await fetch(`${API_BASE}/ai/diagnosis/${diagnosisId}/status`, {
+          headers: { Accept: 'application/json' },
+        });
         if (!response.ok) return;
         const payload = await response.json();
         if (stopped) return;
-        const nextAi = payload?.data?.ai as AiResult | undefined;
-        if (nextAi) {
-          setAi(nextAi);
-          if (nextAi.analyzed && timer) clearInterval(timer);
+        const nextAi = payload?.ai as AiResult | undefined;
+        if (!nextAi) return;
+
+        setAi(nextAi);
+        if ((nextAi.status === 'completed' || nextAi.status === 'failed') && timer) {
+          clearInterval(timer);
+          timer = null;
         }
       } catch {
-        // Analisis lanjutan tidak boleh memblokir hasil utama.
+        // Analisis tambahan tidak boleh memblokir hasil utama.
       }
     };
 
-    void fetch(`${API_BASE}/ai/diagnosis/${diagnosisId}/analyze`, {
-      method: 'POST',
-      headers: { Accept: 'application/json' },
-    }).finally(() => void refresh());
+    const startAnalysis = async () => {
+      try {
+        await fetch(`${API_BASE}/ai/diagnosis/${diagnosisId}/analyze`, {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        });
+      } finally {
+        void refreshStatus();
+      }
+    };
 
-    timer = setInterval(refresh, 2500);
-    void refresh();
+    void refreshStatus();
+    void startAnalysis();
+    timer = setInterval(refreshStatus, 2500);
 
     return () => {
       stopped = true;
       if (timer) clearInterval(timer);
     };
   }, [diagnosisId]);
+
+  async function retryAiAnalysis() {
+    if (!diagnosisId || aiRetrying || !ai?.retryable) return;
+
+    setAiRetrying(true);
+    setAi((current) => current ? {
+      ...current,
+      status: 'processing',
+      retryable: false,
+      message: 'Analisis utama selesai. Pemeriksaan pola masalah sedang dilengkapi.',
+    } : current);
+
+    try {
+      await fetch(`${API_BASE}/ai/diagnosis/${diagnosisId}/analyze`, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+      });
+
+      const statusResponse = await fetch(`${API_BASE}/ai/diagnosis/${diagnosisId}/status`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (statusResponse.ok) {
+        const payload = await statusResponse.json();
+        if (payload?.ai) setAi(payload.ai as AiResult);
+      }
+    } catch {
+      // Hasil utama tetap dapat digunakan bila analisis tambahan gagal.
+    } finally {
+      setAiRetrying(false);
+    }
+  }
 
   function goNext() {
     setError('');
@@ -319,6 +370,8 @@ export default function DiagnosisFormPage() {
       });
       const payload = await response.json();
       if (!response.ok || !payload.diagnosis_id) throw new Error(payload.message ?? 'Diagnosis gagal diproses.');
+      aiRequested.current = false;
+      setAi(null);
       setDiagnosis(payload);
       setDiagnosisId(payload.diagnosis_id);
       setStep(5);
@@ -349,6 +402,7 @@ export default function DiagnosisFormPage() {
     setDowntimeCostPerHour(0);
     setMaintenanceCostPerUnitMonth(0);
     setChargingCostPerUnitMonth(0);
+    setAiRetrying(false);
     aiRequested.current = false;
   }
 
@@ -432,7 +486,7 @@ export default function DiagnosisFormPage() {
     'Potensi pengurangan aktivitas maintenance: 90%',
     `Kesesuaian operasional: ${operationalFit}`,
     ...(hasFinancialInputs
-      ? ['', '*DATA BIAYA YANG TERSEDIA*', `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`, ...(financialMode === 'full' ? [`Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`, `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`] : []), `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`, `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)}`]
+      ? ['', '*DATA BIAYA YANG TERSEDIA*', `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`, ...(financialMode === 'full' ? [`Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`, `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`] : []), `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`, `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)} / tahun`]
       : ['', '*STATUS FINANSIAL*', 'Menunggu validasi data biaya perusahaan. Dampak operasional tetap dihitung tanpa membuat asumsi nominal biaya.']),
     '',
     'Mohon dibantu untuk langkah pemeriksaan teknis berikutnya. Data di atas merupakan hasil awal dan keputusan teknis tetap memerlukan verifikasi kondisi aktual di lapangan.',
@@ -589,7 +643,13 @@ export default function DiagnosisFormPage() {
               <div className="border-b border-zinc-200 p-5 lg:flex lg:items-center lg:justify-between lg:gap-5"><div><div className="font-black">{selectedIssues.length} masalah dianalisis sebagai satu kondisi operasional</div><Mono>Tingkat keyakinan {confidence}% • Analisis multi-gejala</Mono></div><div className="mt-4 flex flex-wrap gap-2 lg:mt-0">{selectedIssueLabels.map((label) => <span key={label} className="rounded-full border border-[#FFCC00] bg-[#FFFEF0] px-3 py-1 text-xs font-bold">{label}</span>)}</div></div>
               <div className="grid lg:grid-cols-[340px_1fr]">
                 <div className="border-b border-zinc-200 p-7 lg:border-b-0 lg:border-r"><Mono>SKOR KONDISI BATTERY</Mono><HealthGauge value={health} /><div className="mt-7 space-y-3 text-sm"><KeyValue label="Urgensi" value={urgency} /><KeyValue label="Tingkat keyakinan" value={`${confidence}%`} /><KeyValue label="Gejala" value={`${selectedIssues.length} masalah`} /></div><Mono className="mt-8">DRRKOBE.COM/BIP</Mono></div>
-                <div className="p-7"><Mono>PENYEBAB YANG PERLU DIVERIFIKASI</Mono><div className="mt-6 space-y-5">{causeRows.map((cause, index) => <CauseBar key={`${cause.name}-${index}`} name={cause.name} value={cause.value} />)}</div><div className="mt-7 rounded-[18px] bg-[#0A0A0A] p-5 text-white"><div className="font-black text-[#FFCC00]">INTERPRETASI DRRKOBE</div><p className="mt-2 text-sm leading-6 text-zinc-300">{ai?.summary || `Skor kondisi ${health}% dihitung dari usia battery, pola ${shift} shift, durasi pengisian, frekuensi waktu henti, perawatan isi air, dan ${selectedIssues.length} gejala yang dilaporkan. Pemeriksaan teknis lanjutan sedang dilengkapi tanpa menahan hasil utama.`}</p></div>{!ai?.analyzed && <div className="mt-4 flex items-center gap-3 text-xs font-bold text-zinc-500"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFCC00]" /> Analisis teknis lanjutan sedang dilengkapi...</div>}<div className="mt-7 grid gap-3 sm:grid-cols-2"><Metric label="Dampak" value={`${selectedIssues.length} masalah saling berkaitan`} /><Metric label="Selanjutnya" value="Dampak operasional & perbandingan teknologi" /></div></div>
+                <div className="p-7">
+                  <Mono>PENYEBAB YANG PERLU DIVERIFIKASI</Mono>
+                  <div className="mt-6 space-y-5">{causeRows.map((cause, index) => <CauseBar key={`${cause.name}-${index}`} name={cause.name} value={cause.value} />)}</div>
+                  <div className="mt-7 rounded-[18px] bg-[#0A0A0A] p-5 text-white"><div className="font-black text-[#FFCC00]">INTERPRETASI DRRKOBE</div><p className="mt-2 text-sm leading-6 text-zinc-300">{ai?.status === 'completed' && ai.summary ? ai.summary : `Skor kondisi ${health}% dihitung dari usia battery, pola ${shift} shift, durasi pengisian, frekuensi waktu henti, perawatan isi air, dan ${selectedIssues.length} gejala yang dilaporkan. Hasil utama sudah tersedia tanpa menunggu pemeriksaan pola masalah tambahan.`}</p></div>
+                  <AiLifecyclePanel ai={ai} retrying={aiRetrying} onRetry={() => void retryAiAnalysis()} />
+                  <div className="mt-7 grid gap-3 sm:grid-cols-2"><Metric label="Dampak" value={`${selectedIssues.length} masalah saling berkaitan`} /><Metric label="Selanjutnya" value="Dampak operasional & perbandingan teknologi" /></div>
+                </div>
               </div>
             </div>
             <Nav onBack={() => setStep(4)} onNext={() => setStep(6)} nextLabel="Lihat Dampak" />
@@ -676,6 +736,18 @@ export default function DiagnosisFormPage() {
       <style jsx global>{`.drr-input{margin-top:.5rem;width:100%;border-radius:12px;border:1px solid #d4d4d8;background:#fff;padding:.8rem 1rem;color:#0a0a0a;outline:none}.drr-input:focus{border-color:#FFCC00;box-shadow:0 0 0 3px rgba(255,204,0,.22)}`}</style>
     </main>
   );
+}
+
+function AiLifecyclePanel({ ai, retrying, onRetry }: { ai: AiResult | null; retrying: boolean; onRetry: () => void }) {
+  if (!ai || ai.status === 'pending' || ai.status === 'processing') {
+    return <div className="mt-4 flex items-start gap-3 rounded-xl border border-[#FFCC00]/50 bg-[#FFFEF0] px-4 py-3 text-xs font-bold text-zinc-700"><span className="mt-1 h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#FFCC00]" /><span>{ai?.message || 'Analisis utama selesai. Pemeriksaan pola masalah sedang dilengkapi.'}</span></div>;
+  }
+
+  if (ai.status === 'failed') {
+    return <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3"><div className="text-xs font-bold text-red-800">{ai.message || 'Analisis tambahan belum tersedia. Hasil utama tetap dapat digunakan.'}</div>{ai.retryable && <button type="button" onClick={onRetry} disabled={retrying} className="mt-3 rounded-full bg-[#0A0A0A] px-4 py-2 text-xs font-black text-white disabled:opacity-40">{retrying ? 'Mencoba kembali...' : 'Coba Analisis Lagi'}</button>}{!ai.retryable && <div className="mt-2 text-[11px] leading-5 text-red-700">Batas percobaan analisis tambahan telah tercapai. Skor kondisi dan hasil utama tetap tersedia.</div>}</div>;
+  }
+
+  return <div className="mt-4 flex items-center gap-3 text-xs font-bold text-zinc-500"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Analisis tambahan selesai.</div>;
 }
 
 function formatRupiah(value: number) { return `Rp ${Math.round(value).toLocaleString('id-ID')}`; }
