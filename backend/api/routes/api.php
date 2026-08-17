@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AiDiagnosticController;
 use App\Http\Controllers\Api\V1\DiagnosisController;
+use App\Http\Controllers\Api\V1\FunnelEventController;
 use App\Http\Controllers\Api\V1\LeadController;
 use App\Http\Controllers\Api\V1\MasterDataController;
 use App\Http\Controllers\Api\V1\SyncController;
@@ -27,6 +28,11 @@ Route::prefix('v1')->group(function () {
         DiagnosisController::class,
         'result',
     ]);
+
+    Route::post('/events', [
+        FunnelEventController::class,
+        'store',
+    ])->middleware('throttle:120,1');
 
     Route::post('/leads', [
         LeadController::class,
