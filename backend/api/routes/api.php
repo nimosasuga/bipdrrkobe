@@ -31,7 +31,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/leads', [
         LeadController::class,
         'store',
-    ]);
+    ])->middleware('throttle:10,1');
 
     Route::get('/ai/diagnosis/{diagnosis}/context', [
         AiDiagnosticController::class,
