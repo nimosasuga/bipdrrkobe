@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import SiteHeader from '../components/site-header';
+import DiagnosisFunnelTracker from '../components/diagnosis-funnel-tracker';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="id">
       <body>
+        <DiagnosisFunnelTracker />
         <SiteHeader />
         <div className="drr-app-shell">{children}</div>
 
