@@ -23,6 +23,9 @@ Route::prefix('internal')->group(function () {
         Route::get('/dashboard', InternalDashboardController::class)
             ->name('internal.dashboard');
 
+        Route::get('/leads', [InternalLeadController::class, 'index'])
+            ->name('internal.leads.index');
+
         Route::get('/leads/{lead}', [InternalLeadController::class, 'show'])
             ->name('internal.leads.show');
 
