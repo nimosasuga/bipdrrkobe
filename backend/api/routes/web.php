@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Internal\InternalAuthController;
 use App\Http\Controllers\Internal\InternalDashboardController;
+use App\Http\Controllers\Internal\InternalLeadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -21,6 +22,12 @@ Route::prefix('internal')->group(function () {
     Route::middleware(['auth', 'internal.user'])->group(function () {
         Route::get('/dashboard', InternalDashboardController::class)
             ->name('internal.dashboard');
+
+        Route::get('/leads/{lead}', [InternalLeadController::class, 'show'])
+            ->name('internal.leads.show');
+
+        Route::post('/leads/{lead}/status', [InternalLeadController::class, 'updateStatus'])
+            ->name('internal.leads.status');
 
         Route::post('/logout', [InternalAuthController::class, 'destroy'])
             ->name('internal.logout');
