@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { downloadAssessmentPdf } from '../../../lib/generate-assessment-pdf';
 
 const API_BASE = 'https://api.drrkobe.com/api/v1';
 const WHATSAPP_NUMBER = '6285133331476';
@@ -80,6 +81,11 @@ export default function DiagnosisFormPage() {
   const [jumlahForklift, setJumlahForklift] = useState(5);
   const [roiJamOperasi, setRoiJamOperasi] = useState(16);
   const [roiShift, setRoiShift] = useState(2);
+  const [companyName, setCompanyName] = useState('');
+  const [siteName, setSiteName] = useState('');
+  const [downtimeCostPerHour, setDowntimeCostPerHour] = useState(0);
+  const [maintenanceCostPerUnitMonth, setMaintenanceCostPerUnitMonth] = useState(0);
+  const [chargingCostPerUnitMonth, setChargingCostPerUnitMonth] = useState(0);
   const [loadingModels, setLoadingModels] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -153,7 +159,7 @@ export default function DiagnosisFormPage() {
           if (nextAi.analyzed && timer) clearInterval(timer);
         }
       } catch {
-        // Enrichment tidak boleh memblokir hasil utama.
+        // Analisis lanjutan tidak boleh memblokir hasil utama.
       }
     };
 
@@ -237,6 +243,11 @@ export default function DiagnosisFormPage() {
     setDiagnosis(null);
     setDiagnosisId(null);
     setAi(null);
+    setCompanyName('');
+    setSiteName('');
+    setDowntimeCostPerHour(0);
+    setMaintenanceCostPerUnitMonth(0);
+    setChargingCostPerUnitMonth(0);
     aiRequested.current = false;
   }
 
@@ -254,7 +265,18 @@ export default function DiagnosisFormPage() {
   const operationalHoursMonth = Math.max(1, jamOperasi * 26);
   const productivityLoss = Math.min(100, Math.round((downtimeHours / operationalHoursMonth) * 100));
   const roiDowntime = roiShift >= 3 ? 75 : roiShift >= 2 ? 70 : 65;
-  const payback = roiJamOperasi >= 16 && roiShift >= 2 ? 'Cepat' : 'Sedang';
+  const operationalFit = roiJamOperasi >= 16 && roiShift >= 2 ? 'Tinggi' : 'Sedang';
+
+  const monthlyDowntimeCost = downtimeCostPerHour * downtimeHours * jumlahForklift;
+  const monthlyMaintenanceCost = maintenanceCostPerUnitMonth * jumlahForklift;
+  const monthlyChargingCost = chargingCostPerUnitMonth * jumlahForklift;
+  const annualOperatingExposure = (monthlyDowntimeCost + monthlyMaintenanceCost + monthlyChargingCost) * 12;
+  const annualSavingScenario = (
+    monthlyDowntimeCost * (roiDowntime / 100) +
+    monthlyMaintenanceCost * 0.9 +
+    monthlyChargingCost * 0.28
+  ) * 12;
+  const hasFinancialInputs = annualOperatingExposure > 0;
 
   const rootCauseText = causeRows.length
     ? causeRows.slice(0, 3).map((cause, index) => `${index + 1}. ${cause.name} (${cause.value}%)`).join('\n')
@@ -268,12 +290,18 @@ export default function DiagnosisFormPage() {
     'Halo tim DRRKOBE,',
     '',
     'Saya sudah menyelesaikan diagnosis di DRRKOBE Battery Intelligence Platform dan ingin mengajukan technical assessment.',
+    ...(companyName || siteName ? [
+      '',
+      '*DATA PERUSAHAAN*',
+      `Perusahaan: ${companyName || '-'}`,
+      `Lokasi/site: ${siteName || '-'}`,
+    ] : []),
     '',
     '*DATA UNIT*',
     `Brand: ${selectedBrand?.name || '-'}`,
     `Model: ${selectedModel?.model_code || selectedModel?.name || '-'}`,
     `Kategori: ${selectedModel?.category || '-'}`,
-    `Battery: Lead Acid`,
+    'Battery: Lead Acid',
     `Tegangan: ${selectedModel?.battery_voltage ? `${selectedModel.battery_voltage} V` : '-'}`,
     `Kapasitas nominal: ${selectedModel?.battery_capacity_ah ? `${selectedModel.battery_capacity_ah} Ah` : '-'}`,
     `Umur battery: ${umur} tahun`,
@@ -307,12 +335,69 @@ export default function DiagnosisFormPage() {
     `Potensi pengurangan downtime: ${roiDowntime}%`,
     'Potensi peningkatan efisiensi energi: 28%',
     'Potensi pengurangan aktivitas maintenance: 90%',
-    `Indikator payback operasional: ${payback}`,
+    `Operational fit: ${operationalFit}`,
+    ...(hasFinancialInputs ? [
+      '',
+      '*INPUT BIAYA OPERASIONAL*',
+      `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`,
+      `Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`,
+      `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`,
+      `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`,
+      `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)}`,
+    ] : []),
     '',
-    'Mohon dibantu untuk langkah technical assessment berikutnya. Data di atas merupakan hasil awal BIP dan saya memahami bahwa keputusan teknis tetap memerlukan verifikasi kondisi aktual di lapangan.',
+    'Mohon dibantu untuk langkah technical assessment berikutnya. Data di atas merupakan hasil awal BIP dan keputusan teknis tetap memerlukan verifikasi kondisi aktual di lapangan.',
   ].join('\n');
 
   const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMessage)}`;
+
+  function handleDownloadReport() {
+    if (!diagnosis || !diagnosisId) return;
+
+    downloadAssessmentPdf({
+      diagnosisId,
+      companyName,
+      siteName,
+      brand: selectedBrand?.name || '-',
+      model: selectedModel?.model_code || selectedModel?.name || '-',
+      category: selectedModel?.category || '-',
+      batteryType: 'Lead Acid',
+      voltage: selectedModel?.battery_voltage ? `${selectedModel.battery_voltage} V` : '-',
+      capacity: selectedModel?.battery_capacity_ah ? `${selectedModel.battery_capacity_ah} Ah` : '-',
+      batteryAgeYears: umur,
+      shift,
+      operatingHoursPerDay: jamOperasi,
+      wateringPerWeek: isiAir,
+      fastDrain: cepatHabis,
+      longCharging: chargingLama,
+      frequentDowntime: downtime,
+      chargerError,
+      hydraulicSlow: hydraulicLambat,
+      issues: selectedIssueLabels,
+      healthScore: health,
+      healthCategory: diagnosis.category,
+      urgency,
+      confidence,
+      causes: causeRows,
+      aiSummary: ai?.summary,
+      technicalFindings: ai?.technical_findings || [],
+      recommendedActions: ai?.recommended_actions || [],
+      downtimeHoursPerMonth: downtimeHours,
+      chargingExposureHoursPerMonth: chargingWaste,
+      maintenanceActionsPerYear: maintenanceYear,
+      productivityLossPercent: productivityLoss,
+      fleetSize: jumlahForklift,
+      simulationHoursPerDay: roiJamOperasi,
+      simulationShift: roiShift,
+      downtimeReductionPercent: roiDowntime,
+      energyEfficiencyPercent: 28,
+      maintenanceReductionPercent: 90,
+      operationalFit,
+      downtimeCostPerHour,
+      maintenanceCostPerUnitMonth,
+      chargingCostPerUnitMonth,
+    });
+  }
 
   return (
     <main className="min-h-screen bg-[#FCFCF9] text-[#0A0A0A]">
@@ -503,7 +588,7 @@ export default function DiagnosisFormPage() {
                 <Range label={`Jumlah Forklift: ${jumlahForklift}`} value={jumlahForklift} min={1} max={20} onChange={setJumlahForklift} />
                 <div className="mt-7"><Range label={`Jam Operasi / Hari: ${roiJamOperasi}h`} value={roiJamOperasi} min={8} max={24} onChange={setRoiJamOperasi} /></div>
                 <div className="mt-7"><Choice label="Shift" value={roiShift} values={[1, 2, 3]} onChange={setRoiShift} suffix=" Shift" /></div>
-                <div className="mt-7 rounded-xl bg-[#FFFEF0] p-4 text-xs leading-5"><b>Catatan:</b> simulasi hanya menampilkan potensi efisiensi operasional tanpa nominal harga.</div>
+                <div className="mt-7 rounded-xl bg-[#FFFEF0] p-4 text-xs leading-5"><b>Catatan:</b> simulasi persentase adalah indikator awal. Nilai aktual harus diverifikasi berdasarkan duty cycle dan kondisi site.</div>
               </Panel>
               <div className="rounded-[24px] bg-[#0A0A0A] p-7 text-white">
                 <Mono className="text-zinc-400">SIMULASI • {jumlahForklift} unit • {roiJamOperasi} jam • {roiShift} shift</Mono>
@@ -511,11 +596,31 @@ export default function DiagnosisFormPage() {
                   <DarkResult label="Downtime" value={`-${roiDowntime}%`} sub="Potensi pengurangan downtime" />
                   <DarkResult label="Energy" value="+28%" sub="Potensi peningkatan efisiensi energi" />
                   <DarkResult label="Maintenance" value="-90%" sub="Potensi pengurangan watering & equalizing" />
-                  <DarkResult label="Payback" value={payback} sub="Indikator operasional, tanpa nominal harga" />
+                  <DarkResult label="Operational Fit" value={operationalFit} sub="Berdasarkan shift dan jam operasi" />
                 </div>
-                <div className="mt-6 rounded-[16px] bg-[#FFCC00] p-5 text-black"><b>Potensi operasional:</b> semakin tinggi jam operasi, jumlah unit, dan shift, semakin besar manfaat opportunity charging dan pengurangan downtime yang perlu divalidasi melalui assessment.</div>
+                <div className="mt-6 rounded-[16px] bg-[#FFCC00] p-5 text-black"><b>Potensi operasional:</b> semakin tinggi jam operasi, jumlah unit, dan shift, semakin besar kebutuhan menjaga availability battery dan charging window.</div>
               </div>
             </div>
+
+            <Panel className="mt-6">
+              <Mono>EXECUTIVE REPORT INPUTS — OPTIONAL</Mono>
+              <h3 className="mt-3 text-xl font-black">Masukkan data biaya aktual perusahaan bila tersedia.</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">DRRKOBE tidak mengisi biaya dengan asumsi tersembunyi. Jika kolom biaya dikosongkan, PDF tetap dibuat tetapi financial impact hanya tampil dalam bentuk jam, frekuensi, dan persentase.</p>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <ReportField label="Nama perusahaan"><input className="drr-input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Contoh: PT ABC Indonesia" /></ReportField>
+                <ReportField label="Lokasi / site"><input className="drr-input" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="Contoh: Plant Cikarang" /></ReportField>
+                <ReportField label="Biaya downtime per jam (Rp)"><input className="drr-input" type="number" min={0} value={downtimeCostPerHour || ''} onChange={(e) => setDowntimeCostPerHour(Math.max(0, Number(e.target.value) || 0))} placeholder="0" /></ReportField>
+                <ReportField label="Maintenance Lead Acid / unit / bulan (Rp)"><input className="drr-input" type="number" min={0} value={maintenanceCostPerUnitMonth || ''} onChange={(e) => setMaintenanceCostPerUnitMonth(Math.max(0, Number(e.target.value) || 0))} placeholder="0" /></ReportField>
+                <ReportField label="Charging / listrik / unit / bulan (Rp)"><input className="drr-input" type="number" min={0} value={chargingCostPerUnitMonth || ''} onChange={(e) => setChargingCostPerUnitMonth(Math.max(0, Number(e.target.value) || 0))} placeholder="0" /></ReportField>
+                <div className="rounded-[18px] bg-[#0A0A0A] p-5 text-white">
+                  <Mono className="text-zinc-400">FINANCIAL PREVIEW</Mono>
+                  <div className="mt-3 text-2xl font-black">{hasFinancialInputs ? formatRupiah(annualOperatingExposure) : 'Belum dihitung'}</div>
+                  <p className="mt-2 text-xs leading-5 text-zinc-400">{hasFinancialInputs ? `Annual operating exposure berdasarkan input. Scenario saving: ${formatRupiah(annualSavingScenario)} / tahun.` : 'Isi minimal satu data biaya untuk menampilkan estimasi exposure pada report.'}</p>
+                </div>
+              </div>
+              <p className="mt-5 text-xs leading-5 text-zinc-500">Harga pembelian battery tetap tidak ditampilkan. Commercial payback baru dihitung setelah technical assessment dan commercial proposal tersedia.</p>
+            </Panel>
+
             <Nav onBack={() => setStep(7)} onNext={() => setStep(9)} nextLabel="Lihat Rekomendasi Final" />
           </StepFrame>
         )}
@@ -539,16 +644,17 @@ export default function DiagnosisFormPage() {
               <div className="rounded-[28px] bg-[#0A0A0A] p-8 text-center text-white">
                 <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFCC00] text-3xl text-black">✓</div>
                 <h2 className="mt-6 text-3xl font-black">Diagnosis Selesai</h2>
-                <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Data diagnosis, kondisi operasional, dampak, dan simulasi efisiensi sudah dirangkum. Kirim ringkasan ini melalui WhatsApp untuk melanjutkan technical assessment.</p>
+                <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-zinc-300">Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan technical assessment.</p>
                 <div className="mx-auto mt-7 max-w-xl rounded-[18px] border border-white/10 bg-white/[0.06] p-5 text-left">
                   <Mono className="text-zinc-400">DIAGNOSIS SUMMARY • DRRKOBE.COM/BIP</Mono>
                   <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><KeyValue label="Model" value={selectedModel?.model_code || selectedModel?.name || '-'} dark /><KeyValue label="Battery" value={`Lead Acid • ${health}% health`} dark /><KeyValue label="Issues" value={`${selectedIssues.length} masalah`} dark /><KeyValue label="Urgency" value={urgency} dark /></div>
                 </div>
                 <div className="mt-7 flex flex-wrap justify-center gap-3">
-                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Request Assessment via WhatsApp →</a>
-                  <button type="button" onClick={resetFlow} className="rounded-full border border-white/20 px-6 py-3 text-sm font-bold">Mulai Diagnosis Baru</button>
+                  <button type="button" onClick={handleDownloadReport} className="rounded-full bg-[#FFCC00] px-6 py-3 text-sm font-black text-black transition hover:bg-[#F5C000]">Download Executive Report PDF ↓</button>
+                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-6 py-3 text-sm font-black text-white transition hover:border-white">Request Assessment via WhatsApp →</a>
+                  <button type="button" onClick={resetFlow} className="rounded-full border border-white/15 px-6 py-3 text-sm font-bold text-zinc-300">Mulai Diagnosis Baru</button>
                 </div>
-                <p className="mt-4 text-xs leading-5 text-zinc-500">Pesan WhatsApp dibuat otomatis dari data yang Anda isi dan hasil diagnosis pada sesi ini.</p>
+                <p className="mt-4 text-xs leading-5 text-zinc-500">PDF dan pesan WhatsApp dibuat dari data pada sesi diagnosis ini. Data biaya hanya digunakan bila Anda mengisinya.</p>
               </div>
             </div>
           </StepFrame>
@@ -562,6 +668,10 @@ export default function DiagnosisFormPage() {
   );
 }
 
+function formatRupiah(value: number) {
+  return `Rp ${Math.round(value).toLocaleString('id-ID')}`;
+}
+
 function Progress({ step }: { step: number }) {
   return <div className="border-b border-zinc-200 bg-white"><div className="mx-auto flex min-h-[54px] max-w-[1280px] items-center justify-between gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8"><div className="flex min-w-[650px] items-center">{Array.from({ length: 9 }, (_, index) => index + 1).map((number) => <div key={number} className="flex items-center"><div className={`grid h-7 w-7 place-items-center rounded-full text-xs font-black ${number <= step ? 'bg-[#0A0A0A] text-white' : 'border border-zinc-200 bg-white text-zinc-400'}`}>{number}</div>{number < 9 && <div className={`mx-2 h-px w-9 ${number < step ? 'bg-[#0A0A0A]' : 'bg-zinc-200'}`} />}</div>)}</div><div className="whitespace-nowrap text-[11px] font-semibold"><span className="font-mono text-zinc-500">DRRKOBE Diagnostic Engine</span><span className="mx-3 text-zinc-300">|</span>Step {step}/9</div></div></div>;
 }
@@ -572,6 +682,7 @@ function StepFrame({ eyebrow, title, children }: { eyebrow: string; title: strin
 
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) { return <div className={`rounded-[24px] border border-zinc-200 bg-white p-6 ${className}`}>{children}</div>; }
 function Label({ children }: { children: React.ReactNode }) { return <div className="text-sm font-black">{children}</div>; }
+function ReportField({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-black text-zinc-800">{label}{children}</label>; }
 function Mono({ children, className = '' }: { children: React.ReactNode; className?: string }) { return <div className={`font-mono text-[11px] font-semibold tracking-[.12em] text-zinc-500 ${className}`}>{children}</div>; }
 
 function Nav({ onBack, onNext, error, nextLabel = 'Lanjutkan', disabled = false, yellow = false }: { onBack?: () => void; onNext: () => void; error?: string; nextLabel?: string; disabled?: boolean; yellow?: boolean }) {
