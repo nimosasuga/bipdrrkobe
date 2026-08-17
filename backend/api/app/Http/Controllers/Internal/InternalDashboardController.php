@@ -62,6 +62,7 @@ class InternalDashboardController extends Controller
                 'lead_score',
                 'qualification_status',
                 'qualification_reason',
+                'status',
                 'created_at',
             ])
             ->orderByRaw("CASE lead_score WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 WHEN 'monitor' THEN 3 ELSE 4 END")
