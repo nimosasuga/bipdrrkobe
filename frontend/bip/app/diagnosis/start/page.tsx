@@ -64,14 +64,12 @@ export default function DiagnosisStartPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            disabled
-            className="mt-6 inline-flex cursor-not-allowed rounded-xl bg-white/70 px-5 py-3 font-semibold text-slate-500 md:mt-0"
-            title="Form diagnosis akan dibuat pada tahap berikutnya"
+          <Link
+            href="/diagnosis/form"
+            className="mt-6 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-slate-950 transition hover:bg-slate-100 md:mt-0"
           >
             Lanjutkan Diagnosis
-          </button>
+          </Link>
         </section>
       </div>
     </main>
