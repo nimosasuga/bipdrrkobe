@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DRRKOBE Internal Dashboard</title>
+    <title>DRRKOBE Internal Sales Dashboard</title>
     <style>
-        *{box-sizing:border-box}body{margin:0;background:#f7f7f3;color:#0a0a0a;font-family:Inter,Arial,sans-serif}.shell{min-height:100vh}.top{background:#0a0a0a;color:#fff}.top-inner{max-width:1180px;margin:auto;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-weight:900;font-size:24px;letter-spacing:-.04em}.badge{margin-left:8px;background:#ffcc00;color:#000;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.user{font-size:12px;color:#d4d4d8}.logout{border:1px solid #3f3f46;background:transparent;color:#fff;border-radius:999px;padding:9px 14px;font-weight:800;cursor:pointer}.main{max-width:1180px;margin:auto;padding:36px 24px 56px}.eyebrow{font:700 11px/1.5 monospace;letter-spacing:.12em;color:#71717a}.title{margin:6px 0 10px;font-size:34px;font-weight:900;letter-spacing:-.04em}.muted{margin:0;color:#71717a;font-size:14px;line-height:1.7}.grid{margin-top:28px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.card{background:#fff;border:1px solid #e4e4e7;border-radius:20px;padding:22px}.card h2{margin:0 0 8px;font-size:17px}.card p{margin:0;color:#71717a;font-size:13px;line-height:1.6}.status{display:inline-flex;margin-top:16px;border-radius:999px;background:#fffbeb;padding:7px 10px;font-size:11px;font-weight:900}.role{text-transform:uppercase}.footer{margin-top:28px;border-top:1px solid #e4e4e7;padding-top:18px;font-size:11px;color:#a1a1aa}@media(max-width:780px){.grid{grid-template-columns:1fr}.top-inner{align-items:flex-start;flex-direction:column}.title{font-size:28px}}
+        *{box-sizing:border-box}body{margin:0;background:#f7f7f3;color:#0a0a0a;font-family:Inter,Arial,sans-serif}.shell{min-height:100vh}.top{background:#0a0a0a;color:#fff}.top-inner{max-width:1240px;margin:auto;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-weight:900;font-size:24px;letter-spacing:-.04em}.badge{margin-left:8px;background:#ffcc00;color:#000;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.user{font-size:12px;color:#d4d4d8}.logout{border:1px solid #3f3f46;background:transparent;color:#fff;border-radius:999px;padding:9px 14px;font-weight:800;cursor:pointer}.main{max-width:1240px;margin:auto;padding:36px 24px 56px}.eyebrow{font:700 11px/1.5 monospace;letter-spacing:.12em;color:#71717a}.title{margin:6px 0 10px;font-size:36px;font-weight:900;letter-spacing:-.04em}.muted{margin:0;color:#71717a;font-size:14px;line-height:1.7}.section{margin-top:32px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:14px}.section-title{margin:0;font-size:20px;font-weight:900;letter-spacing:-.025em}.section-note{font-size:12px;color:#a1a1aa}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric{background:#fff;border:1px solid #e4e4e7;border-radius:20px;padding:20px}.metric-label{font:800 10px/1.4 monospace;letter-spacing:.11em;color:#71717a}.metric-value{margin-top:9px;font-size:34px;font-weight:900;letter-spacing:-.05em}.metric-sub{margin-top:5px;color:#a1a1aa;font-size:11px;line-height:1.5}.funnel{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.funnel-card{position:relative;background:#0a0a0a;color:#fff;border-radius:18px;padding:18px;min-height:116px}.funnel-card:after{content:'→';position:absolute;right:-9px;top:50%;z-index:2;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#ffcc00;color:#000;font-weight:900}.funnel-card:last-child:after{display:none}.funnel-label{font:700 9px/1.45 monospace;letter-spacing:.08em;color:#a1a1aa}.funnel-value{margin-top:12px;font-size:27px;font-weight:900}.priority{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.priority-card{border-radius:20px;padding:20px;border:1px solid #e4e4e7;background:#fff}.priority-card.hot{border-color:#fecaca;background:#fff7f7}.priority-card.warm{border-color:#fde68a;background:#fffbeb}.priority-card.monitor{border-color:#d4d4d8}.priority-card.pending{border-style:dashed}.priority-label{font-size:11px;font-weight:900;letter-spacing:.08em}.priority-value{margin-top:8px;font-size:30px;font-weight:900}.table-wrap{overflow:hidden;border:1px solid #e4e4e7;border-radius:22px;background:#fff}.lead-table{width:100%;border-collapse:collapse;font-size:12px}.lead-table th{padding:13px 14px;text-align:left;background:#0a0a0a;color:#fff;font-size:10px;letter-spacing:.08em}.lead-table td{padding:14px;border-bottom:1px solid #f0f0f0;vertical-align:top}.lead-table tr:last-child td{border-bottom:0}.company{font-weight:900}.small{margin-top:4px;color:#71717a;font-size:11px;line-height:1.45}.score{font-size:20px;font-weight:900}.pill{display:inline-flex;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:900;letter-spacing:.06em}.pill.hot{background:#fee2e2;color:#991b1b}.pill.warm{background:#fef3c7;color:#92400e}.pill.monitor{background:#e4e4e7;color:#3f3f46}.pill.pending{background:#f4f4f5;color:#71717a}.reason{max-width:330px;color:#52525b;line-height:1.5}.wa{color:#0a0a0a;font-weight:800;text-decoration:none}.wa:hover{text-decoration:underline}.empty{padding:28px;text-align:center;color:#a1a1aa}.footer{margin-top:30px;border-top:1px solid #e4e4e7;padding-top:18px;font-size:11px;color:#a1a1aa}.role{text-transform:uppercase}@media(max-width:980px){.metrics{grid-template-columns:repeat(2,1fr)}.funnel{grid-template-columns:repeat(3,1fr)}.funnel-card:nth-child(3):after{display:none}.priority{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.top-inner{align-items:flex-start;flex-direction:column}.main{padding:28px 16px 44px}.title{font-size:30px}.metrics,.priority,.funnel{grid-template-columns:1fr}.funnel-card:after{display:none}.table-wrap{overflow-x:auto}.lead-table{min-width:920px}.section-head{align-items:flex-start;flex-direction:column}}
     </style>
 </head>
 <body>
@@ -24,26 +24,113 @@
     </header>
 
     <main class="main">
-        <div class="eyebrow">PHASE 8 · INTERNAL SALES DASHBOARD</div>
-        <h1 class="title">Akses Internal Aktif</h1>
-        <p class="muted">Fondasi autentikasi sudah aktif. Modul funnel, lead priority, conversion, dan sales follow-up akan ditambahkan bertahap setelah akses internal tervalidasi.</p>
+        <div class="eyebrow">PHASE 8 · INTERNAL SALES INTELLIGENCE</div>
+        <h1 class="title">Sales Overview</h1>
+        <p class="muted">Ringkasan funnel diagnosis, conversion, dan prioritas lead berdasarkan data yang sudah tercatat. Seluruh klasifikasi prioritas hanya untuk penggunaan internal.</p>
 
-        <section class="grid">
-            <article class="card">
-                <h2>Authentication</h2>
-                <p>Session server-side, CSRF protection, role check, status akun aktif, dan login throttling.</p>
-                <span class="status">AKTIF</span>
-            </article>
-            <article class="card">
-                <h2>Sales Funnel</h2>
-                <p>Data diagnosis hingga assessment sudah tersedia di PostgreSQL dan siap diaggregasi.</p>
-                <span class="status">NEXT</span>
-            </article>
-            <article class="card">
-                <h2>Lead Priority</h2>
-                <p>HOT / WARM / MONITOR akan tetap terbatas untuk pengguna internal.</p>
-                <span class="status">INTERNAL ONLY</span>
-            </article>
+        <section class="section">
+            <div class="metrics">
+                <article class="metric">
+                    <div class="metric-label">TOTAL LEADS</div>
+                    <div class="metric-value">{{ number_format($totalLeads) }}</div>
+                    <div class="metric-sub">Lead assessment yang tersimpan.</div>
+                </article>
+                <article class="metric">
+                    <div class="metric-label">STARTED → LEAD</div>
+                    <div class="metric-value">{{ number_format($startedToLeadRate, 1) }}%</div>
+                    <div class="metric-sub">Conversion diagnosis dimulai menjadi lead.</div>
+                </article>
+                <article class="metric">
+                    <div class="metric-label">LEAD → WHATSAPP</div>
+                    <div class="metric-value">{{ number_format($leadToAssessmentRate, 1) }}%</div>
+                    <div class="metric-sub">Lead yang melanjutkan request assessment.</div>
+                </article>
+                <article class="metric">
+                    <div class="metric-label">HOT LEADS</div>
+                    <div class="metric-value">{{ number_format($leadPriority['hot']) }}</div>
+                    <div class="metric-sub">Prioritas follow-up tertinggi saat ini.</div>
+                </article>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">Diagnosis Funnel</h2>
+                <div class="section-note">Unique session count · test event dikecualikan</div>
+            </div>
+            <div class="funnel">
+                @php
+                    $funnelItems = [
+                        ['Diagnosis Started', $eventCounts['diagnosis_started'] ?? 0],
+                        ['Diagnosis Completed', $eventCounts['diagnosis_completed'] ?? 0],
+                        ['Step 8 Viewed', $eventCounts['step_8_viewed'] ?? 0],
+                        ['Lead Captured', $eventCounts['lead_captured'] ?? 0],
+                        ['Report Downloaded', $eventCounts['report_downloaded'] ?? 0],
+                        ['Assessment Clicked', $eventCounts['assessment_clicked'] ?? 0],
+                    ];
+                @endphp
+                @foreach($funnelItems as [$label, $value])
+                    <article class="funnel-card">
+                        <div class="funnel-label">{{ strtoupper($label) }}</div>
+                        <div class="funnel-value">{{ number_format($value) }}</div>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">Lead Priority</h2>
+                <div class="section-note">Internal qualification only</div>
+            </div>
+            <div class="priority">
+                <article class="priority-card hot"><div class="priority-label">HOT</div><div class="priority-value">{{ number_format($leadPriority['hot']) }}</div></article>
+                <article class="priority-card warm"><div class="priority-label">WARM</div><div class="priority-value">{{ number_format($leadPriority['warm']) }}</div></article>
+                <article class="priority-card monitor"><div class="priority-label">MONITOR</div><div class="priority-value">{{ number_format($leadPriority['monitor']) }}</div></article>
+                <article class="priority-card pending"><div class="priority-label">PENDING</div><div class="priority-value">{{ number_format($leadPriority['pending']) }}</div></article>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">Lead Prioritas Terbaru</h2>
+                <div class="section-note">Urutan HOT → WARM → MONITOR → pending</div>
+            </div>
+            <div class="table-wrap">
+                @if($recentLeads->isEmpty())
+                    <div class="empty">Belum ada lead tersimpan.</div>
+                @else
+                    <table class="lead-table">
+                        <thead>
+                            <tr>
+                                <th>PRIORITY</th>
+                                <th>COMPANY / SITE</th>
+                                <th>PIC</th>
+                                <th>MODEL</th>
+                                <th>FLEET</th>
+                                <th>HEALTH</th>
+                                <th>REASON</th>
+                                <th>CAPTURED</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($recentLeads as $lead)
+                                @php $priority = $lead->lead_score ?: 'pending'; @endphp
+                                <tr>
+                                    <td><span class="pill {{ $priority }}">{{ strtoupper($priority) }}</span></td>
+                                    <td><div class="company">{{ $lead->perusahaan }}</div><div class="small">{{ $lead->kota ?: '-' }}</div></td>
+                                    <td><div>{{ $lead->nama }}</div><div class="small"><a class="wa" href="https://wa.me/{{ $lead->whatsapp }}" target="_blank" rel="noopener noreferrer">{{ $lead->whatsapp }}</a></div></td>
+                                    <td>{{ $lead->model ?: '-' }}</td>
+                                    <td>{{ number_format($lead->jumlah_forklift ?? 0) }} unit</td>
+                                    <td><span class="score">{{ $lead->health_score ?? '-' }}{{ $lead->health_score !== null ? '%' : '' }}</span></td>
+                                    <td class="reason">{{ $lead->qualification_reason ?: ($lead->qualification_status === 'failed' ? 'Qualification gagal. Perlu pemeriksaan manual.' : 'Menunggu qualification.') }}</td>
+                                    <td>{{ optional($lead->created_at)->format('d M Y H:i') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+            </div>
         </section>
 
         <div class="footer">DRRKOBE · Internal Sales Intelligence · Access controlled</div>
