@@ -56,14 +56,17 @@ const PAGE_W = 210;
 const PAGE_H = 297;
 const MARGIN = 18;
 const CONTENT_W = PAGE_W - MARGIN * 2;
+const TOTAL_PAGES = 8;
+
 const BLACK: [number, number, number] = [10, 10, 10];
 const YELLOW: [number, number, number] = [255, 204, 0];
 const PAPER: [number, number, number] = [252, 252, 249];
-const GREY: [number, number, number] = [113, 113, 122];
+const WHITE: [number, number, number] = [255, 255, 255];
+const GREY: [number, number, number] = [92, 92, 99];
+const MID_GREY: [number, number, number] = [161, 161, 170];
 const LIGHT: [number, number, number] = [228, 228, 231];
 const RED: [number, number, number] = [239, 68, 68];
 const GREEN: [number, number, number] = [34, 197, 94];
-const TOTAL_PAGES = 8;
 
 function rupiah(value: number): string {
   return `Rp ${Math.round(value).toLocaleString('id-ID')}`;
@@ -74,15 +77,51 @@ function yesNo(value: boolean): string {
 }
 
 function safe(value: string | null | undefined, fallback = '-'): string {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : fallback;
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : fallback;
 }
 
 function filenamePart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 45) || 'assessment';
+  return value
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 45) || 'assessment';
 }
 
-function addPageBase(doc: jsPDF, page: number, section: string) {
+function humanizeText(value: string): string {
+  return value
+    .replace(/health_score/gi, 'Health Score')
+    .replace(/lead_acid/gi, 'Lead Acid')
+    .replace(/charging_lama/gi, 'charging lebih dari 8 jam')
+    .replace(/isi_air/gi, 'frekuensi isi air')
+    .replace(/diagnostic_rules?/gi, 'aturan diagnosis')
+    .replace(/battery_specs?/gi, 'spesifikasi battery')
+    .replace(/confidence_base/gi, 'tingkat keyakinan')
+    .replace(/recommended_actions?/gi, 'tindakan yang disarankan')
+    .replace(/technical_findings?/gi, 'temuan teknis')
+    .replace(/probable_causes?/gi, 'kemungkinan penyebab')
+    .replace(/\bAI\b/gi, 'analisis')
+    .replace(/\bengine\b/gi, 'analisis')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function riskLabel(score: number): string {
+  if (score <= 40) return 'Kritis';
+  if (score <= 65) return 'Perlu perhatian';
+  if (score <= 80) return 'Waspada';
+  return 'Baik';
+}
+
+function riskColor(score: number): [number, number, number] {
+  if (score <= 40) return RED;
+  if (score <= 80) return YELLOW;
+  return GREEN;
+}
+
+function pageBase(doc: jsPDF, page: number, section: string) {
   doc.setFillColor(...PAPER);
   doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
 
@@ -93,38 +132,64 @@ function addPageBase(doc: jsPDF, page: number, section: string) {
 
   doc.setFillColor(...YELLOW);
   doc.roundedRect(MARGIN + 23, 7.5, 10, 7, 1.5, 1.5, 'F');
+  doc.setTextColor(...BLACK);
   doc.setFontSize(6.5);
   doc.text('BIP', MARGIN + 25, 12.1);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.3);
   doc.setTextColor(...GREY);
   doc.text('BATTERY RELIABILITY & OPERATIONAL IMPACT ASSESSMENT', PAGE_W - MARGIN, 11.5, { align: 'right' });
 
   doc.setDrawColor(...LIGHT);
   doc.line(MARGIN, 17, PAGE_W - MARGIN, 17);
 
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
+  doc.setTextColor(...MID_GREY);
   doc.text(section.toUpperCase(), MARGIN, PAGE_H - 10);
-  doc.text(`PAGE ${page} / ${TOTAL_PAGES}`, PAGE_W - MARGIN, PAGE_H - 10, { align: 'right' });
+  doc.text(`${page} / ${TOTAL_PAGES}`, PAGE_W - MARGIN, PAGE_H - 10, { align: 'right' });
 }
 
-function title(doc: jsPDF, eyebrow: string, heading: string, y = 28): number {
-  doc.setTextColor(...GREY);
+function newPage(doc: jsPDF, page: number, section: string) {
+  if (page > 1) doc.addPage();
+  pageBase(doc, page, section);
+}
+
+function sectionTitle(doc: jsPDF, kicker: string, heading: string, subheading?: string, y = 30): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.text(eyebrow.toUpperCase(), MARGIN, y);
+  doc.setTextColor(...GREY);
+  doc.text(kicker.toUpperCase(), MARGIN, y);
 
+  doc.setFontSize(21);
   doc.setTextColor(...BLACK);
-  doc.setFontSize(22);
   doc.text(heading, MARGIN, y + 10);
 
   doc.setFillColor(...YELLOW);
-  doc.rect(MARGIN, y + 14, 42, 2.2, 'F');
-  return y + 25;
+  doc.rect(MARGIN, y + 14, 44, 2.2, 'F');
+
+  if (subheading) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...GREY);
+    const lines = doc.splitTextToSize(subheading, CONTENT_W) as string[];
+    doc.text(lines, MARGIN, y + 23);
+    return y + 23 + Math.max(1, lines.length) * 4.5 + 5;
+  }
+
+  return y + 24;
 }
 
-function paragraph(doc: jsPDF, text: string, x: number, y: number, width: number, fontSize = 9, color = GREY, lineHeight = 4.8): number {
+function paragraph(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  fontSize = 9,
+  color: [number, number, number] = GREY,
+  lineHeight = 4.8,
+): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...color);
@@ -133,82 +198,162 @@ function paragraph(doc: jsPDF, text: string, x: number, y: number, width: number
   return y + Math.max(1, lines.length) * lineHeight;
 }
 
-function labelValue(doc: jsPDF, label: string, value: string, x: number, y: number, width = 78): number {
+function labelValue(doc: jsPDF, label: string, value: string, x: number, y: number, width = 76): number {
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
-  doc.setTextColor(...GREY);
+  doc.setFontSize(6.4);
+  doc.setTextColor(...MID_GREY);
   doc.text(label.toUpperCase(), x, y);
-  doc.setFontSize(9.5);
+
+  doc.setFontSize(9.6);
   doc.setTextColor(...BLACK);
   const lines = doc.splitTextToSize(value, width) as string[];
   doc.text(lines, x, y + 5);
-  return y + 5 + lines.length * 4.5;
+  return y + 5 + Math.max(1, lines.length) * 4.5;
 }
 
-function metricCard(doc: jsPDF, x: number, y: number, w: number, label: string, value: string, sub?: string, dark = false) {
-  if (dark) {
-    doc.setFillColor(...BLACK);
-    doc.setDrawColor(...BLACK);
-  } else {
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(...LIGHT);
-  }
-  doc.roundedRect(x, y, w, 32, 3, 3, 'FD');
+function metricCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  label: string,
+  value: string,
+  note: string,
+  dark = false,
+) {
+  doc.setFillColor(...(dark ? BLACK : WHITE));
+  doc.setDrawColor(...(dark ? BLACK : LIGHT));
+  doc.roundedRect(x, y, width, 34, 3.5, 3.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
-  doc.setTextColor(...(dark ? [161, 161, 170] as [number, number, number] : GREY));
+  doc.setFontSize(6.2);
+  doc.setTextColor(...(dark ? MID_GREY : GREY));
   doc.text(label.toUpperCase(), x + 5, y + 8);
 
   doc.setFontSize(15);
-  doc.setTextColor(...(dark ? [255, 255, 255] as [number, number, number] : BLACK));
-  doc.text(value, x + 5, y + 18);
+  doc.setTextColor(...(dark ? WHITE : BLACK));
+  doc.text(value, x + 5, y + 19);
 
-  if (sub) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.4);
-    doc.setTextColor(...(dark ? [161, 161, 170] as [number, number, number] : GREY));
-    const lines = doc.splitTextToSize(sub, w - 10) as string[];
-    doc.text(lines.slice(0, 2), x + 5, y + 24);
-  }
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.4);
+  doc.setTextColor(...(dark ? MID_GREY : GREY));
+  const lines = doc.splitTextToSize(note, width - 10) as string[];
+  doc.text(lines.slice(0, 2), x + 5, y + 26);
 }
 
-function progressBar(doc: jsPDF, x: number, y: number, w: number, label: string, value: number) {
-  const clamped = Math.max(0, Math.min(100, value));
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(...BLACK);
-  doc.text(label, x, y);
-  doc.text(`${clamped}%`, x + w, y, { align: 'right' });
+function quoteCard(doc: jsPDF, text: string, y: number, dark = true): number {
+  const fill = dark ? BLACK : WHITE;
+  const textColor = dark ? WHITE : BLACK;
 
-  doc.setFillColor(244, 244, 245);
-  doc.roundedRect(x, y + 3, w, 3.2, 1.6, 1.6, 'F');
+  doc.setFillColor(...fill);
+  doc.setDrawColor(...(dark ? BLACK : LIGHT));
+  const lines = doc.splitTextToSize(text, CONTENT_W - 20) as string[];
+  const height = Math.max(34, 18 + lines.length * 5.2);
+  doc.roundedRect(MARGIN, y, CONTENT_W, height, 4, 4, 'FD');
+
   doc.setFillColor(...YELLOW);
-  doc.roundedRect(x, y + 3, Math.max(2, (w * clamped) / 100), 3.2, 1.6, 1.6, 'F');
+  doc.roundedRect(MARGIN + 7, y + 8, 4, 14, 1.5, 1.5, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.2);
+  doc.setTextColor(...textColor);
+  doc.text(lines, MARGIN + 17, y + 12);
+
+  return y + height;
 }
 
-function bulletList(doc: jsPDF, items: string[], x: number, y: number, width: number, maxItems = 8): number {
-  const list = items.slice(0, maxItems);
-  if (!list.length) return paragraph(doc, 'Belum ada data tambahan yang tersedia pada sesi ini.', x, y, width, 8.5);
+function bulletList(doc: jsPDF, items: string[], x: number, y: number, width: number, maxItems = 7): number {
+  const list = items.slice(0, maxItems).map(humanizeText).filter(Boolean);
+  if (!list.length) {
+    return paragraph(doc, 'Belum ada catatan tambahan pada bagian ini.', x, y, width, 8.5, GREY);
+  }
 
   let cursor = y;
-  list.forEach((item) => {
+  for (const item of list) {
     doc.setFillColor(...YELLOW);
-    doc.circle(x + 1.5, cursor - 1.5, 1.2, 'F');
-    cursor = paragraph(doc, item, x + 6, cursor, width - 6, 8.4, BLACK, 4.3) + 1.5;
-  });
+    doc.circle(x + 1.5, cursor - 1.4, 1.2, 'F');
+    cursor = paragraph(doc, item, x + 6, cursor, width - 6, 8.5, BLACK, 4.4) + 1.8;
+  }
   return cursor;
 }
 
-function riskColor(score: number): [number, number, number] {
-  if (score <= 40) return RED;
-  if (score <= 80) return YELLOW;
-  return GREEN;
+function causeBar(doc: jsPDF, x: number, y: number, width: number, cause: AssessmentCause): number {
+  const value = Math.max(0, Math.min(100, cause.value));
+  const name = humanizeText(cause.name);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...BLACK);
+  doc.text(name, x, y);
+  doc.text(`${value}%`, x + width, y, { align: 'right' });
+
+  doc.setFillColor(240, 240, 241);
+  doc.roundedRect(x, y + 3, width, 3.2, 1.6, 1.6, 'F');
+  doc.setFillColor(...YELLOW);
+  doc.roundedRect(x, y + 3, Math.max(2, (width * value) / 100), 3.2, 1.6, 1.6, 'F');
+
+  let next = y + 12;
+  if (cause.reason) {
+    next = paragraph(doc, humanizeText(cause.reason), x, y + 11, width, 7.4, GREY, 4.1) + 2;
+  }
+  return next;
 }
 
-function newPage(doc: jsPDF, page: number, section: string) {
-  if (page > 1) doc.addPage();
-  addPageBase(doc, page, section);
+function executiveNarrative(data: AssessmentReportData): string {
+  const issueNames = data.issues.slice(0, 3).join(', ').toLowerCase();
+  const operation = `${data.shift} shift dan sekitar ${data.operatingHoursPerDay} jam operasi per hari`;
+
+  if (data.healthScore <= 40) {
+    return `Kondisi battery menunjukkan risiko operasional tinggi. Pada pola ${operation}, gejala seperti ${issueNames || 'penurunan performa'} sudah cukup kuat untuk memengaruhi availability unit. Prioritas berikutnya adalah memeriksa kapasitas aktual battery, pola charging, dan kondisi charger sebelum keputusan perubahan teknologi dibuat.`;
+  }
+  if (data.healthScore <= 65) {
+    return `Performa battery masih dapat digunakan, namun marginnya terhadap kebutuhan operasi mulai menurun. Dengan pola ${operation}, masalah ${issueNames || 'yang dilaporkan'} perlu diverifikasi agar downtime tidak berkembang menjadi gangguan operasional yang lebih besar.`;
+  }
+  if (data.healthScore <= 80) {
+    return `Battery masih berada pada kondisi yang dapat dikelola, tetapi terdapat beberapa tanda yang perlu dipantau. Fokus utama adalah menjaga pola charging, maintenance, dan waktu operasi agar penurunan performa tidak semakin cepat.`;
+  }
+  return `Kondisi battery saat ini relatif baik berdasarkan data yang tersedia. Tindakan utama adalah mempertahankan disiplin charging dan maintenance, kemudian memantau perubahan performa dari waktu ke waktu.`;
+}
+
+function fieldNarrative(data: AssessmentReportData): string {
+  const clues: string[] = [];
+  if (data.fastDrain) clues.push('daya tidak bertahan satu shift');
+  if (data.longCharging) clues.push('waktu charging lebih dari 8 jam');
+  if (data.frequentDowntime) clues.push('downtime terjadi lebih dari dua kali per bulan');
+  if (data.chargerError) clues.push('charger pernah menampilkan error');
+  if (data.hydraulicSlow) clues.push('hydraulic melambat saat battery rendah');
+
+  const finding = clues.length ? clues.join(', ') : 'tidak ada gejala tambahan yang dilaporkan';
+  return `Unit beroperasi ${data.shift} shift dengan estimasi ${data.operatingHoursPerDay} jam per hari. Battery berumur ${data.batteryAgeYears} tahun dan membutuhkan isi air sekitar ${data.wateringPerWeek} kali per minggu. Dari sisi pengguna, kondisi yang paling terasa adalah ${finding}. Informasi ini menjadi dasar penilaian awal dan tetap perlu dikonfirmasi saat pemeriksaan langsung.`;
+}
+
+function decisionStatement(data: AssessmentReportData): string {
+  if (data.healthScore <= 40) {
+    return 'Layak dilanjutkan ke technical assessment untuk menentukan apakah optimasi Lead Acid masih memadai atau migrasi ke Lithium-ion lebih sesuai dengan kebutuhan operasi.';
+  }
+  if (data.healthScore <= 65) {
+    return 'Technical assessment direkomendasikan sebelum memutuskan investasi. Fokus verifikasi adalah kapasitas aktual, charging window, charger, dan pola downtime.';
+  }
+  return 'Belum ada alasan untuk mengambil keputusan teknologi secara terburu-buru. Pertahankan monitoring dan lakukan assessment bila gejala semakin sering atau jam operasi meningkat.';
+}
+
+function drawSimpleGauge(doc: jsPDF, x: number, y: number, score: number) {
+  const color = riskColor(score);
+  doc.setFillColor(245, 245, 245);
+  doc.circle(x, y, 26, 'F');
+  doc.setFillColor(...color);
+  doc.circle(x, y, 23, 'F');
+  doc.setFillColor(...WHITE);
+  doc.circle(x, y, 18, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(...BLACK);
+  doc.text(`${score}%`, x, y + 2, { align: 'center' });
+
+  doc.setFontSize(6.8);
+  doc.setTextColor(...color);
+  doc.text(riskLabel(score).toUpperCase(), x, y + 9, { align: 'center' });
 }
 
 export function downloadAssessmentPdf(data: AssessmentReportData) {
@@ -225,373 +370,466 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   ) * 12;
   const monetaryInputsAvailable = annualOperatingExposure > 0;
   const reportDate = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+  const scoreLabel = riskLabel(data.healthScore);
 
-  // PAGE 1 - EXECUTIVE SUMMARY
-  newPage(doc, 1, 'Executive Summary');
+  // PAGE 1 — RINGKASAN EKSEKUTIF
+  newPage(doc, 1, 'Ringkasan Eksekutif');
+
   doc.setFillColor(...BLACK);
-  doc.roundedRect(MARGIN, 28, CONTENT_W, 73, 5, 5, 'F');
-  doc.setTextColor(255, 255, 255);
+  doc.roundedRect(MARGIN, 28, CONTENT_W, 78, 5, 5, 'F');
+
+  doc.setTextColor(...MID_GREY);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('EXECUTIVE DECISION REPORT', MARGIN + 8, 41);
-  doc.setFontSize(25);
-  doc.text('Battery Reliability &', MARGIN + 8, 55);
-  doc.text('Operational Impact', MARGIN + 8, 66);
-  doc.setFillColor(...YELLOW);
-  doc.rect(MARGIN + 8, 71, 54, 3, 'F');
-  doc.setFontSize(9);
-  doc.setTextColor(212, 212, 216);
-  doc.text('Prepared for', MARGIN + 8, 84);
-  doc.setFontSize(13);
-  doc.setTextColor(255, 255, 255);
-  doc.text(safe(data.companyName, 'Client Assessment'), MARGIN + 8, 92);
-  doc.setFontSize(8);
-  doc.setTextColor(161, 161, 170);
-  doc.text(`${safe(data.siteName, 'Site not specified')} | ${reportDate}`, PAGE_W - MARGIN - 8, 92, { align: 'right' });
-
-  let y = 113;
-  y = labelValue(doc, 'Assessment ID', data.diagnosisId, MARGIN, y, 80);
-  labelValue(doc, 'Unit', `${data.brand} ${data.model} | ${data.category}`, 110, 113, 80);
-  labelValue(doc, 'Current Battery', `${data.batteryType} | ${data.voltage} | ${data.capacity}`, MARGIN, 133, 80);
-  labelValue(doc, 'Operation', `${data.shift} shift | ${data.operatingHoursPerDay} jam/hari | ${data.batteryAgeYears} tahun`, 110, 133, 80);
-
-  const risk = data.healthScore <= 40 ? 'CRITICAL' : data.healthScore <= 65 ? 'BAD' : data.healthScore <= 80 ? 'CAUTION' : 'GOOD';
-  metricCard(doc, MARGIN, 157, 40, 'Health Score', `${data.healthScore}%`, risk);
-  metricCard(doc, MARGIN + 45, 157, 40, 'Urgency', data.urgency, 'Prioritas tindak lanjut');
-  metricCard(doc, MARGIN + 90, 157, 40, 'Confidence', `${data.confidence}%`, 'Berdasarkan data tersedia');
-  metricCard(doc, MARGIN + 135, 157, 39, 'Issues', `${data.issues.length}`, 'Masalah terindikasi');
-
-  doc.setFillColor(255, 254, 240);
-  doc.setDrawColor(...YELLOW);
-  doc.roundedRect(MARGIN, 198, CONTENT_W, 44, 4, 4, 'FD');
-  doc.setTextColor(...BLACK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('EXECUTIVE INTERPRETATION', MARGIN + 6, 210);
-  const summary = data.aiSummary || `Health Score ${data.healthScore}% menunjukkan tingkat risiko ${risk.toLowerCase()} berdasarkan kombinasi umur battery, pola operasi, charging, downtime, watering, dan gejala yang dipilih.`;
-  paragraph(doc, summary, MARGIN + 6, 219, CONTENT_W - 12, 9, BLACK, 4.8);
-
   doc.setFontSize(7);
+  doc.text('LAPORAN PENILAIAN EKSEKUTIF', MARGIN + 9, 41);
+
+  doc.setTextColor(...WHITE);
+  doc.setFontSize(24);
+  doc.text('Kesehatan Battery &', MARGIN + 9, 55);
+  doc.text('Dampak Operasional', MARGIN + 9, 66);
+
+  doc.setFillColor(...YELLOW);
+  doc.rect(MARGIN + 9, 72, 55, 3, 'F');
+
+  doc.setFontSize(8);
+  doc.setTextColor(...MID_GREY);
+  doc.text('Disiapkan untuk', MARGIN + 9, 85);
+  doc.setFontSize(13);
+  doc.setTextColor(...WHITE);
+  doc.text(safe(data.companyName, 'Assessment Client'), MARGIN + 9, 94);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(...MID_GREY);
+  doc.text(`${safe(data.siteName, 'Lokasi belum diisi')} • ${reportDate}`, PAGE_W - MARGIN - 9, 94, { align: 'right' });
+
+  drawSimpleGauge(doc, 46, 138, data.healthScore);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(...MID_GREY);
+  doc.text('KESIMPULAN UTAMA', 83, 119);
+
+  doc.setFontSize(15);
+  doc.setTextColor(...BLACK);
+  const decisionLines = doc.splitTextToSize(
+    data.healthScore <= 40 ? 'Battery perlu mendapat perhatian segera.' : data.healthScore <= 65 ? 'Performa mulai membatasi operasi.' : 'Kondisi masih dapat dikelola.',
+    105,
+  ) as string[];
+  doc.text(decisionLines, 83, 131);
+
+  let y = 145;
+  y = paragraph(doc, executiveNarrative(data), 83, y, 105, 9.3, GREY, 5.1);
+
+  const cardsY = Math.max(184, y + 8);
+  metricCard(doc, MARGIN, cardsY, 40, 'Urgensi', humanizeText(data.urgency), 'Prioritas tindak lanjut');
+  metricCard(doc, MARGIN + 45, cardsY, 40, 'Keyakinan', `${data.confidence}%`, 'Berdasarkan data yang tersedia');
+  metricCard(doc, MARGIN + 90, cardsY, 40, 'Masalah', `${data.issues.length}`, 'Gejala yang dilaporkan');
+  metricCard(doc, MARGIN + 135, cardsY, 39, 'Fleet', `${data.fleetSize} unit`, 'Cakupan simulasi');
+
+  y = quoteCard(doc, decisionStatement(data), cardsY + 46, true) + 7;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.8);
   doc.setTextColor(...GREY);
-  doc.text('Decision principle: evidence -> finding -> impact -> risk -> recommendation -> verification.', MARGIN, 255);
-  doc.text('Report ini merupakan decision-support document, bukan sertifikasi ISO atau pengganti inspeksi teknis lapangan.', MARGIN, 261);
+  doc.text('Laporan ini adalah penilaian awal berdasarkan data yang diisi. Keputusan teknis akhir memerlukan verifikasi kondisi aktual di lapangan.', MARGIN, Math.min(267, y));
 
-  // PAGE 2 - INPUT & EVIDENCE
-  newPage(doc, 2, 'Assessment Inputs');
-  y = title(doc, '01 / Evidence Base', 'Data Unit dan Kondisi Aktual');
+  // PAGE 2 — KONDISI LAPANGAN
+  newPage(doc, 2, 'Kondisi Lapangan');
+  y = sectionTitle(
+    doc,
+    '01 / Kondisi saat ini',
+    'Apa yang terjadi di lapangan?',
+    'Bagian ini merangkum kondisi unit dan gejala yang benar-benar dirasakan oleh pengguna, tanpa menerjemahkannya menjadi istilah software atau kode internal.',
+  );
 
-  doc.setFillColor(255, 255, 255);
+  doc.setFillColor(...WHITE);
   doc.setDrawColor(...LIGHT);
   doc.roundedRect(MARGIN, y, CONTENT_W, 61, 4, 4, 'FD');
-  labelValue(doc, 'Brand / Model', `${data.brand} ${data.model}`, MARGIN + 6, y + 11, 78);
-  labelValue(doc, 'Category', data.category, 110, y + 11, 78);
-  labelValue(doc, 'Battery', `${data.batteryType} | ${data.voltage} | ${data.capacity}`, MARGIN + 6, y + 31, 78);
-  labelValue(doc, 'Operation', `${data.shift} shift | ${data.operatingHoursPerDay} jam/hari`, 110, y + 31, 78);
-  labelValue(doc, 'Battery Age', `${data.batteryAgeYears} tahun`, MARGIN + 6, y + 49, 78);
-  labelValue(doc, 'Watering', `${data.wateringPerWeek}x per minggu`, 110, y + 49, 78);
+  labelValue(doc, 'Brand & Model', `${data.brand} ${data.model}`, MARGIN + 6, y + 12, 76);
+  labelValue(doc, 'Jenis Unit', data.category, 110, y + 12, 76);
+  labelValue(doc, 'Battery Saat Ini', `${data.batteryType} • ${data.voltage} • ${data.capacity}`, MARGIN + 6, y + 32, 76);
+  labelValue(doc, 'Pola Operasi', `${data.shift} shift • ${data.operatingHoursPerDay} jam/hari`, 110, y + 32, 76);
+  labelValue(doc, 'Umur Battery', `${data.batteryAgeYears} tahun`, MARGIN + 6, y + 50, 76);
+  labelValue(doc, 'Isi Air', `${data.wateringPerWeek}x per minggu`, 110, y + 50, 76);
 
   y += 76;
+  y = quoteCard(doc, fieldNarrative(data), y, false) + 12;
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
-  doc.text('Masalah yang dilaporkan', MARGIN, y);
-  y = bulletList(doc, data.issues, MARGIN, y + 9, 82, 10);
+  doc.text('Keluhan yang dipilih pengguna', MARGIN, y);
+  y = bulletList(doc, data.issues, MARGIN, y + 10, 80, 10);
 
-  let rightY = y - Math.min(55, data.issues.length * 5.8 + 9);
-  const xRight = 110;
+  const detailY = y - Math.min(60, Math.max(25, data.issues.length * 6));
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text('Detail operasional', xRight, rightY);
-  const details = [
-    `Battery cepat habis dalam 1 shift: ${yesNo(data.fastDrain)}`,
-    `Charging lebih dari 8 jam: ${yesNo(data.longCharging)}`,
-    `Downtime >2x per bulan: ${yesNo(data.frequentDowntime)}`,
-    `Charger error code: ${yesNo(data.chargerError)}`,
-    `Hydraulic lambat saat battery low: ${yesNo(data.hydraulicSlow)}`,
-  ];
-  bulletList(doc, details, xRight, rightY + 9, 80, 8);
+  doc.text('Kondisi operasional yang terkonfirmasi', 110, detailY);
+  bulletList(
+    doc,
+    [
+      `Battery cepat habis dalam satu shift: ${yesNo(data.fastDrain)}`,
+      `Charging lebih dari 8 jam: ${yesNo(data.longCharging)}`,
+      `Downtime lebih dari dua kali per bulan: ${yesNo(data.frequentDowntime)}`,
+      `Charger pernah menunjukkan error: ${yesNo(data.chargerError)}`,
+      `Hydraulic melambat saat battery rendah: ${yesNo(data.hydraulicSlow)}`,
+    ],
+    110,
+    detailY + 10,
+    80,
+    7,
+  );
 
-  doc.setFillColor(...BLACK);
-  doc.roundedRect(MARGIN, 226, CONTENT_W, 30, 4, 4, 'F');
-  doc.setTextColor(255, 255, 255);
+  // PAGE 3 — PENYEBAB & HEALTH
+  newPage(doc, 3, 'Kesehatan Battery');
+  y = sectionTitle(
+    doc,
+    '02 / Temuan teknis',
+    'Apa yang paling mungkin memengaruhi performa?',
+    'Persentase di bawah menunjukkan tingkat keyakinan terhadap kemungkinan penyebab berdasarkan data yang tersedia. Ini bukan hasil pengukuran laboratorium dan tetap perlu dibuktikan saat assessment.',
+  );
+
+  drawSimpleGauge(doc, 48, y + 31, data.healthScore);
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('TRACEABILITY NOTE', MARGIN + 6, 237);
-  paragraph(doc, 'Seluruh kesimpulan pada report ini harus dapat ditelusuri kembali ke data form, Health Score, diagnostic rules, dan hasil verifikasi lapangan. Data yang belum tersedia tidak boleh diperlakukan sebagai fakta.', MARGIN + 6, 245, CONTENT_W - 12, 7.8, [212, 212, 216], 4.2);
-
-  // PAGE 3 - HEALTH & ROOT CAUSE
-  newPage(doc, 3, 'Health & Root Cause');
-  y = title(doc, '02 / Technical Finding', 'Battery Health & Root Cause');
-
-  const gaugeColor = riskColor(data.healthScore);
-  doc.setDrawColor(244, 244, 245);
-  doc.setLineWidth(10);
-  doc.circle(55, 92, 28, 'S');
-  doc.setDrawColor(...gaugeColor);
-  doc.setLineWidth(10);
-  const angle = Math.max(1, Math.min(359, data.healthScore * 3.59));
-  const steps = 80;
-  for (let i = 0; i < steps; i++) {
-    const a1 = (-90 + (angle * i) / steps) * Math.PI / 180;
-    const a2 = (-90 + (angle * (i + 1)) / steps) * Math.PI / 180;
-    doc.line(55 + Math.cos(a1) * 28, 92 + Math.sin(a1) * 28, 55 + Math.cos(a2) * 28, 92 + Math.sin(a2) * 28);
-  }
-  doc.setLineWidth(0.2);
-  doc.setTextColor(...BLACK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(26);
-  doc.text(`${data.healthScore}%`, 55, 91, { align: 'center' });
   doc.setFontSize(7);
-  doc.setTextColor(...gaugeColor);
-  doc.text(risk, 55, 99, { align: 'center' });
-
+  doc.setTextColor(...MID_GREY);
+  doc.text('KONDISI SAAT INI', 85, y + 8);
+  doc.setFontSize(16);
   doc.setTextColor(...BLACK);
-  doc.setFontSize(10);
-  doc.text('Root Cause Ranking', 98, 62);
-  const causes = data.causes.length ? data.causes.slice(0, 5) : [{ name: 'Belum tersedia', value: 0 }];
-  causes.forEach((cause, index) => progressBar(doc, 98, 74 + index * 18, 80, cause.name, cause.value));
+  doc.text(`${scoreLabel} • Health Score ${data.healthScore}%`, 85, y + 20);
+  paragraph(doc, executiveNarrative(data), 85, y + 31, 103, 8.8, GREY, 4.8);
 
-  doc.setFillColor(...BLACK);
-  doc.roundedRect(MARGIN, 153, CONTENT_W, 45, 4, 4, 'F');
-  doc.setTextColor(...YELLOW);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('DRRKOBE INTERPRETATION', MARGIN + 6, 166);
-  paragraph(doc, summary, MARGIN + 6, 175, CONTENT_W - 12, 8.5, [228, 228, 231], 4.6);
-
-  doc.setTextColor(...BLACK);
-  doc.setFontSize(10);
-  doc.text('Technical findings', MARGIN, 215);
-  bulletList(doc, data.technicalFindings || [], MARGIN, 224, CONTENT_W, 6);
-
-  // PAGE 4 - OPERATIONAL IMPACT
-  newPage(doc, 4, 'Operational Impact');
-  y = title(doc, '03 / Operational Impact', 'Dampak Terhadap Operasi');
-  metricCard(doc, MARGIN, y, 40, 'Downtime', `${data.downtimeHoursPerMonth} h/mo`, 'Perkiraan unplanned stop');
-  metricCard(doc, MARGIN + 45, y, 40, 'Charging', `${data.chargingExposureHoursPerMonth} h/mo`, 'Non-productive exposure');
-  metricCard(doc, MARGIN + 90, y, 40, 'Maintenance', `${data.maintenanceActionsPerYear}/yr`, 'Watering + routine checks');
-  metricCard(doc, MARGIN + 135, y, 39, 'Productivity', `-${data.productivityLossPercent}%`, 'Vs available hours');
-
-  y += 48;
+  y += 70;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
-  doc.text('Operational signal profile', MARGIN, y);
+  doc.text('Kemungkinan penyebab utama', MARGIN, y);
 
-  const signalRows = [
-    ['Battery endurance', data.fastDrain ? 82 : 30],
-    ['Charging exposure', data.longCharging ? 78 : 28],
-    ['Downtime risk', data.frequentDowntime ? 84 : 25],
-    ['Watering burden', Math.min(100, data.wateringPerWeek * 22)],
-    ['Electrical / hydraulic symptom', data.chargerError || data.hydraulicSlow ? 68 : 20],
-  ] as const;
-  signalRows.forEach(([label, value], index) => progressBar(doc, MARGIN, y + 12 + index * 18, CONTENT_W, label, value));
+  let causeY = y + 11;
+  const causes = data.causes.slice(0, 4);
+  if (causes.length) {
+    for (const cause of causes) {
+      causeY = causeBar(doc, MARGIN, causeY, CONTENT_W, cause);
+    }
+  } else {
+    causeY = paragraph(doc, 'Belum ada penyebab yang dapat ditampilkan dari data sesi ini.', MARGIN, causeY, CONTENT_W, 8.5, GREY);
+  }
 
-  doc.setFillColor(255, 254, 240);
-  doc.setDrawColor(...YELLOW);
-  doc.roundedRect(MARGIN, 202, CONTENT_W, 47, 4, 4, 'FD');
-  doc.setTextColor(...BLACK);
+  const findings = (data.technicalFindings || []).map(humanizeText).filter(Boolean);
+  if (findings.length && causeY < 235) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...BLACK);
+    doc.text('Catatan teknis yang perlu diperiksa', MARGIN, causeY + 8);
+    bulletList(doc, findings, MARGIN, causeY + 18, CONTENT_W, 5);
+  }
+
+  // PAGE 4 — DAMPAK OPERASIONAL
+  newPage(doc, 4, 'Dampak Operasional');
+  y = sectionTitle(
+    doc,
+    '03 / Dampak terhadap operasi',
+    'Di mana performa battery mulai terasa?',
+    'Fokus utama bukan harga battery, melainkan waktu unit tidak produktif, kebutuhan charging, beban maintenance, dan availability yang berkurang.',
+  );
+
+  metricCard(doc, MARGIN, y, 40, 'Downtime', `${data.downtimeHoursPerMonth} jam/bln`, 'Perkiraan waktu unit tidak produktif');
+  metricCard(doc, MARGIN + 45, y, 40, 'Charging', `${data.chargingExposureHoursPerMonth} jam/bln`, 'Waktu yang terserap untuk charging');
+  metricCard(doc, MARGIN + 90, y, 40, 'Maintenance', `${data.maintenanceActionsPerYear}x/thn`, 'Watering dan pemeriksaan rutin');
+  metricCard(doc, MARGIN + 135, y, 39, 'Produktivitas', `-${data.productivityLossPercent}%`, 'Terhadap jam operasi tersedia');
+
+  y += 49;
+  y = quoteCard(
+    doc,
+    `Untuk fleet ${data.fleetSize} unit dengan pola sekitar ${data.simulationHoursPerDay} jam operasi dan ${data.simulationShift} shift, gangguan battery tidak berdiri sendiri. Waktu charging, downtime, dan maintenance saling memengaruhi availability unit. Karena itu, keputusan battery sebaiknya dilihat sebagai keputusan operasional, bukan sekadar penggantian komponen.`,
+    y,
+    true,
+  ) + 13;
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('MANAGEMENT VIEW', MARGIN + 6, 215);
-  paragraph(doc, 'Dampak operasional tidak hanya dilihat sebagai masalah battery. Fokus manajemen adalah berapa lama unit tidak produktif, berapa sering aktivitas maintenance berulang, dan apakah pola charging mengurangi availability fleet.', MARGIN + 6, 224, CONTENT_W - 12, 8.5, BLACK, 4.6);
+  doc.setFontSize(10);
+  doc.setTextColor(...BLACK);
+  doc.text('Apa artinya bagi operasi sehari-hari?', MARGIN, y);
+  y = bulletList(
+    doc,
+    [
+      data.frequentDowntime ? 'Downtime sudah menjadi isu yang perlu dikendalikan, bukan kejadian insidental.' : 'Downtime belum dilaporkan sebagai masalah utama, tetapi tetap perlu dipantau.',
+      data.longCharging ? 'Charging lebih dari 8 jam mempersempit waktu unit tersedia untuk operasi.' : 'Durasi charging belum menjadi keluhan utama pada sesi ini.',
+      data.wateringPerWeek >= 2 ? `Frekuensi isi air ${data.wateringPerWeek}x per minggu menambah pekerjaan maintenance rutin.` : 'Frekuensi isi air masih relatif rendah berdasarkan data yang diisi.',
+      data.simulationShift >= 2 ? 'Operasi multi-shift membutuhkan battery dan charging window yang lebih konsisten.' : 'Operasi satu shift memberi ruang charging yang lebih longgar dibanding operasi multi-shift.',
+    ],
+    MARGIN,
+    y + 10,
+    CONTENT_W,
+    6,
+  );
 
-  // PAGE 5 - FINANCIAL IMPACT
-  newPage(doc, 5, 'Financial Impact');
-  y = title(doc, '04 / Financial Impact', 'Operational Cost Exposure');
-  paragraph(doc, 'Nominal biaya di bawah hanya dihitung dari angka yang diisi oleh pengguna. BIP tidak mengisi biaya perusahaan dengan asumsi tersembunyi.', MARGIN, y, CONTENT_W, 8.5, GREY, 4.6);
-  y += 16;
+  // PAGE 5 — DAMPAK FINANSIAL
+  newPage(doc, 5, 'Dampak Finansial');
+  y = sectionTitle(
+    doc,
+    '04 / Dampak biaya',
+    'Berapa nilai gangguan ini bagi perusahaan?',
+    'DRRKOBE hanya menghitung nominal dari data biaya yang diberikan pengguna. Bila biaya internal belum diketahui, laporan tidak akan mengarang angka.',
+  );
 
   if (monetaryInputsAvailable) {
-    metricCard(doc, MARGIN, y, 54, 'Downtime / Month', rupiah(monthlyDowntimeCost), `${data.fleetSize} unit x ${data.downtimeHoursPerMonth} jam`);
-    metricCard(doc, MARGIN + 60, y, 54, 'Maintenance / Month', rupiah(monthlyMaintenanceCost), 'Input biaya per unit');
-    metricCard(doc, MARGIN + 120, y, 54, 'Charging / Month', rupiah(monthlyChargingCost), 'Input biaya per unit');
+    metricCard(doc, MARGIN, y, 54, 'Downtime / Bulan', rupiah(monthlyDowntimeCost), `${data.fleetSize} unit × ${data.downtimeHoursPerMonth} jam`);
+    metricCard(doc, MARGIN + 60, y, 54, 'Maintenance / Bulan', rupiah(monthlyMaintenanceCost), 'Berdasarkan biaya yang diisi');
+    metricCard(doc, MARGIN + 120, y, 54, 'Charging / Bulan', rupiah(monthlyChargingCost), 'Berdasarkan biaya yang diisi');
 
     y += 48;
     doc.setFillColor(...BLACK);
-    doc.roundedRect(MARGIN, y, CONTENT_W, 50, 4, 4, 'F');
-    doc.setTextColor(255, 255, 255);
+    doc.roundedRect(MARGIN, y, CONTENT_W, 62, 5, 5, 'F');
+    doc.setTextColor(...MID_GREY);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('ANNUAL OPERATING EXPOSURE', MARGIN + 7, y + 13);
-    doc.setFontSize(22);
-    doc.text(rupiah(annualOperatingExposure), MARGIN + 7, y + 27);
-    doc.setTextColor(...YELLOW);
-    doc.setFontSize(10);
-    doc.text(`Scenario saving potential: ${rupiah(annualSavingScenario)} / year`, MARGIN + 7, y + 40);
+    doc.setFontSize(7);
+    doc.text('GAMBARAN TAHUNAN', MARGIN + 8, y + 13);
 
-    y += 66;
+    doc.setTextColor(...WHITE);
+    doc.setFontSize(23);
+    doc.text(rupiah(annualOperatingExposure), MARGIN + 8, y + 29);
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MID_GREY);
+    doc.text('perkiraan exposure operasional per tahun dari data biaya yang diberikan', MARGIN + 8, y + 38);
+
+    doc.setFillColor(...YELLOW);
+    doc.roundedRect(MARGIN + 8, y + 45, CONTENT_W - 16, 10, 2, 2, 'F');
+    doc.setTextColor(...BLACK);
+    doc.setFontSize(8);
+    doc.text(`Skenario potensi pengurangan exposure: ${rupiah(annualSavingScenario)} / tahun`, MARGIN + 13, y + 51.5);
+
+    y += 77;
+    y = quoteCard(doc, 'Angka finansial ini bukan penawaran harga battery. Nilainya hanya membantu perusahaan memahami besarnya biaya operasional yang mungkin sedang terjadi.', y, false) + 12;
+  } else {
+    doc.setFillColor(...BLACK);
+    doc.roundedRect(MARGIN, y, CONTENT_W, 72, 5, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...MID_GREY);
+    doc.text('STATUS DATA FINANSIAL', MARGIN + 8, y + 13);
+
+    doc.setFontSize(20);
+    doc.setTextColor(...WHITE);
+    doc.text('Belum dapat dihitung secara akurat', MARGIN + 8, y + 29);
+
+    paragraph(
+      doc,
+      'Tidak masalah bila pengguna belum mengetahui biaya internal. Dampak operasional tetap dapat dibaca dari downtime, waktu charging, maintenance, dan productivity exposure. Nominal Rupiah baru layak dihitung setelah perusahaan memberikan cost rate yang valid.',
+      MARGIN + 8,
+      y + 41,
+      CONTENT_W - 16,
+      8.7,
+      MID_GREY,
+      4.7,
+    );
+
+    y += 88;
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...BLACK);
-    doc.text('Calculation basis', MARGIN, y);
-    const financeBasis = [
-      `Downtime cost: ${rupiah(data.downtimeCostPerHour || 0)} per jam`,
-      `Maintenance Lead Acid: ${rupiah(data.maintenanceCostPerUnitMonth || 0)} per unit per bulan`,
-      `Charging / electricity: ${rupiah(data.chargingCostPerUnitMonth || 0)} per unit per bulan`,
-      `Fleet size: ${data.fleetSize} unit`,
-      `Scenario factors: downtime -${data.downtimeReductionPercent}%, maintenance -${data.maintenanceReductionPercent}%, energy +${data.energyEfficiencyPercent}%`,
-    ];
-    bulletList(doc, financeBasis, MARGIN, y + 9, CONTENT_W, 8);
-  } else {
-    doc.setFillColor(255, 254, 240);
-    doc.setDrawColor(...YELLOW);
-    doc.roundedRect(MARGIN, y, CONTENT_W, 70, 4, 4, 'FD');
-    doc.setTextColor(...BLACK);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.text('Monetary cost belum dihitung', MARGIN + 8, y + 18);
-    paragraph(doc, 'Biaya downtime per jam, biaya maintenance per unit, dan biaya charging per unit belum diisi. Report tetap menampilkan dampak operasional tanpa mengarang nilai rupiah.', MARGIN + 8, y + 30, CONTENT_W - 16, 9, BLACK, 5);
-    paragraph(doc, 'Untuk financial business case yang lengkap, isi data biaya aktual perusahaan atau lanjutkan ke technical assessment.', MARGIN + 8, y + 53, CONTENT_W - 16, 8.5, GREY, 4.6);
+    doc.text('Data yang dibutuhkan bila perusahaan ingin menghitung business case', MARGIN, y);
+    bulletList(
+      doc,
+      [
+        'Perkiraan kerugian atau biaya ketika satu forklift berhenti selama satu jam.',
+        'Biaya maintenance Lead Acid per unit per bulan, bila tersedia.',
+        'Biaya listrik atau charging per unit per bulan, bila tersedia.',
+      ],
+      MARGIN,
+      y + 11,
+      CONTENT_W,
+      5,
+    );
   }
 
-  doc.setFillColor(244, 244, 245);
-  doc.roundedRect(MARGIN, 236, CONTENT_W, 23, 3, 3, 'F');
-  doc.setTextColor(...GREY);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.text('Commercial battery price is intentionally excluded from BIP. Investment and payback require a separate commercial proposal after technical validation.', MARGIN + 6, 250);
+  // PAGE 6 — PERBANDINGAN TEKNOLOGI
+  newPage(doc, 6, 'Perbandingan Teknologi');
+  y = sectionTitle(
+    doc,
+    '05 / Lead Acid vs Lithium-ion',
+    'Apa yang berubah bila teknologinya berbeda?',
+    'Perbandingan ini digunakan untuk memahami konsekuensi operasional. Tidak ada harga battery dalam bagian ini.',
+  );
 
-  // PAGE 6 - TECHNOLOGY COMPARISON
-  newPage(doc, 6, 'Technology Comparison');
-  y = title(doc, '05 / Technology Comparison', 'Lead Acid vs Lithium-ion');
   const rows = [
-    ['Charging time', '8-12 jam + cooling', '1.5-2.5 jam, opportunity charge'],
-    ['Cycle reference', '~1,200 cycles', '~3,000+ cycles'],
-    ['Maintenance', 'Watering, equalizing, cleaning', 'Minimal routine maintenance'],
-    ['Energy efficiency', '75-80%', '95%+'],
-    ['Multi-shift availability', 'Terbatas oleh charging / cooling', 'Lebih fleksibel dengan opportunity charging'],
-    ['Watering', 'Required', 'Not required'],
-    ['Operational fit', 'Low-medium duty', 'Medium-high duty / multi-shift'],
+    ['Waktu charging', '8–12 jam + cooling', '1,5–2,5 jam; mendukung opportunity charging'],
+    ['Siklus pemakaian', 'Sekitar 1.200 siklus', 'Sekitar 3.000+ siklus'],
+    ['Perawatan rutin', 'Isi air, equalizing, cleaning', 'Tidak memerlukan watering atau equalizing rutin'],
+    ['Efisiensi energi', 'Sekitar 75–80%', 'Dapat mencapai sekitar 95%+'],
+    ['Operasi multi-shift', 'Perlu charging window dan battery rotation', 'Lebih fleksibel untuk charging saat jeda'],
+    ['Risiko operasional', 'Sulfation, watering, acid handling', 'Tidak ada acid watering; tetap perlu kontrol BMS & charging'],
   ];
 
-  const col1 = 45;
-  const col2 = 64;
-  const col3 = CONTENT_W - col1 - col2;
+  const x1 = MARGIN;
+  const x2 = 72;
+  const x3 = 131;
   doc.setFillColor(...BLACK);
-  doc.rect(MARGIN, y, CONTENT_W, 13, 'F');
-  doc.setTextColor(255, 255, 255);
+  doc.roundedRect(MARGIN, y, CONTENT_W, 16, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.3);
+  doc.setTextColor(...WHITE);
+  doc.text('PARAMETER', x1 + 5, y + 10);
+  doc.text('LEAD ACID SAAT INI', x2 + 4, y + 10);
+  doc.setFillColor(...YELLOW);
+  doc.roundedRect(x3, y, PAGE_W - MARGIN - x3, 16, 0, 3, 'F');
+  doc.setTextColor(...BLACK);
+  doc.text('LITHIUM-ION UNTUK EVALUASI', x3 + 4, y + 10);
+
+  let tableY = y + 16;
+  for (const [parameter, lead, lithium] of rows) {
+    doc.setFillColor(...WHITE);
+    doc.setDrawColor(...LIGHT);
+    doc.rect(MARGIN, tableY, CONTENT_W, 24, 'FD');
+    doc.setFillColor(255, 254, 240);
+    doc.rect(x3, tableY, PAGE_W - MARGIN - x3, 24, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.7);
+    doc.setTextColor(...BLACK);
+    doc.text(doc.splitTextToSize(parameter, 48) as string[], x1 + 5, tableY + 8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.4);
+    doc.setTextColor(...GREY);
+    doc.text((doc.splitTextToSize(lead, 51) as string[]).slice(0, 3), x2 + 4, tableY + 8);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...BLACK);
+    doc.text((doc.splitTextToSize(lithium, 54) as string[]).slice(0, 3), x3 + 4, tableY + 8);
+    tableY += 24;
+  }
+
+  quoteCard(
+    doc,
+    'Perbandingan ini tidak berarti Lithium-ion selalu menjadi jawaban. Kelayakannya bergantung pada duty cycle, charger, konektor, ruang battery, temperatur, pola shift, dan target availability perusahaan.',
+    tableY + 10,
+    true,
+  );
+
+  // PAGE 7 — BUSINESS CASE
+  newPage(doc, 7, 'Business Case');
+  y = sectionTitle(
+    doc,
+    '06 / Potensi perbaikan',
+    'Apa yang mungkin diperoleh dari perubahan cara operasi?',
+    'Angka persentase adalah skenario awal untuk membantu diskusi. Nilai aktual harus dibuktikan melalui assessment dan data operasi perusahaan.',
+  );
+
+  metricCard(doc, MARGIN, y, 40, 'Downtime', `-${data.downtimeReductionPercent}%`, 'Skenario potensi pengurangan');
+  metricCard(doc, MARGIN + 45, y, 40, 'Energi', `+${data.energyEfficiencyPercent}%`, 'Skenario peningkatan efisiensi');
+  metricCard(doc, MARGIN + 90, y, 40, 'Maintenance', `-${data.maintenanceReductionPercent}%`, 'Skenario pengurangan pekerjaan rutin');
+  metricCard(doc, MARGIN + 135, y, 39, 'Kesesuaian', data.operationalFit, 'Terhadap pola shift & jam operasi');
+
+  y += 50;
+  y = quoteCard(
+    doc,
+    `Pada fleet ${data.fleetSize} unit, operasi ${data.simulationShift} shift dan sekitar ${data.simulationHoursPerDay} jam per hari, nilai utama dari solusi battery yang lebih sesuai adalah menjaga unit tetap tersedia saat dibutuhkan. Karena itu, business case harus menghubungkan teknologi battery dengan availability, charging window, maintenance, dan produktivitas.`,
+    y,
+    true,
+  ) + 14;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...BLACK);
+  doc.text('Pertanyaan yang sebaiknya dijawab sebelum keputusan investasi', MARGIN, y);
+  y = bulletList(
+    doc,
+    [
+      'Berapa jam forklift benar-benar dibutuhkan setiap hari dan di setiap shift?',
+      'Apakah charging window saat ini mengganggu availability unit?',
+      'Berapa kali unit berhenti karena battery atau charging dalam satu bulan?',
+      'Apakah perusahaan memiliki waktu istirahat yang dapat digunakan untuk opportunity charging?',
+      'Apakah charger, konektor, dan ruang battery mendukung perubahan teknologi?',
+      monetaryInputsAvailable
+        ? `Apakah potensi pengurangan exposure sekitar ${rupiah(annualSavingScenario)} per tahun cukup untuk membangun business case?`
+        : 'Berapa biaya downtime per jam agar business case finansial dapat dihitung dengan data perusahaan sendiri?',
+    ],
+    MARGIN,
+    y + 11,
+    CONTENT_W,
+    7,
+  );
+
+  // PAGE 8 — REKOMENDASI
+  newPage(doc, 8, 'Rekomendasi & Tindak Lanjut');
+  y = sectionTitle(
+    doc,
+    '07 / Keputusan berikutnya',
+    'Apa yang sebaiknya dilakukan setelah laporan ini?',
+    'Tujuannya bukan memaksa pembelian, tetapi memastikan keputusan battery didasarkan pada kondisi unit, kebutuhan operasi, dan data yang dapat diverifikasi.',
+  );
+
+  doc.setFillColor(...BLACK);
+  doc.roundedRect(MARGIN, y, CONTENT_W, 70, 5, 5, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.text('PARAMETER', MARGIN + 4, y + 8);
-  doc.text('LEAD ACID (CURRENT)', MARGIN + col1 + 4, y + 8);
+  doc.setTextColor(...MID_GREY);
+  doc.text('REKOMENDASI DRRKOBE', MARGIN + 8, y + 13);
+
+  doc.setFontSize(20);
+  doc.setTextColor(...WHITE);
+  const headline = data.healthScore <= 65
+    ? 'Lanjutkan ke Technical Assessment'
+    : 'Pertahankan monitoring & verifikasi berkala';
+  doc.text(headline, MARGIN + 8, y + 29);
+
+  paragraph(doc, decisionStatement(data), MARGIN + 8, y + 41, CONTENT_W - 16, 9, MID_GREY, 4.8);
+
+  y += 86;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...BLACK);
+  doc.text('Yang perlu diperiksa di lokasi', MARGIN, y);
+  y = bulletList(
+    doc,
+    [
+      'Ukur kapasitas aktual battery dan bandingkan dengan kebutuhan duty cycle.',
+      'Periksa kondisi cell, terminal, connector, kabel, dan temperatur kerja.',
+      'Validasi charger: tegangan, arus, charging profile, error history, dan charging window.',
+      'Konfirmasi dimensi battery compartment, berat minimum, connector, dan kebutuhan counterweight.',
+      'Catat pola shift, jam operasi, break time, dan downtime aktual minimal beberapa hari operasi.',
+      'Bila Lithium-ion akan dievaluasi, pastikan kompatibilitas charger, BMS, connector, dan prosedur keselamatan.',
+    ],
+    MARGIN,
+    y + 11,
+    CONTENT_W,
+    7,
+  );
+
+  const actions = (data.recommendedActions || []).map(humanizeText).filter(Boolean);
+  if (actions.length && y < 225) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...BLACK);
+    doc.text('Catatan tindak lanjut dari hasil assessment', MARGIN, y + 8);
+    y = bulletList(doc, actions, MARGIN, y + 18, CONTENT_W, 4);
+  }
+
+  const closingY = Math.max(236, y + 8);
   doc.setFillColor(...YELLOW);
-  doc.rect(MARGIN + col1 + col2, y, col3, 13, 'F');
-  doc.setTextColor(...BLACK);
-  doc.text('LITHIUM-ION (TARGET)', MARGIN + col1 + col2 + 4, y + 8);
-
-  let ty = y + 13;
-  rows.forEach((row, index) => {
-    const rowH = 22;
-    doc.setFillColor(index % 2 ? 252 : 255, index % 2 ? 252 : 255, index % 2 ? 249 : 255);
-    doc.setDrawColor(...LIGHT);
-    doc.rect(MARGIN, ty, CONTENT_W, rowH, 'FD');
-    doc.setFillColor(255, 254, 240);
-    doc.rect(MARGIN + col1 + col2, ty, col3, rowH, 'F');
-
-    doc.setTextColor(...BLACK);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.2);
-    doc.text(doc.splitTextToSize(row[0], col1 - 8) as string[], MARGIN + 4, ty + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...GREY);
-    doc.text(doc.splitTextToSize(row[1], col2 - 8) as string[], MARGIN + col1 + 4, ty + 7);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...BLACK);
-    doc.text(doc.splitTextToSize(row[2], col3 - 8) as string[], MARGIN + col1 + col2 + 4, ty + 7);
-    ty += rowH;
-  });
-
-  paragraph(doc, 'Comparison values are decision-support references and must be confirmed against the selected battery, charger, forklift model, duty cycle, ambient temperature, and manufacturer specification.', MARGIN, 254, CONTENT_W, 7.2, GREY, 4);
-
-  // PAGE 7 - ROI / DECISION SUPPORT
-  newPage(doc, 7, 'ROI & Decision Support');
-  y = title(doc, '06 / Business Case', 'Efficiency Scenario & Decision Support');
-  metricCard(doc, MARGIN, y, 40, 'Fleet', `${data.fleetSize} unit`, `${data.simulationHoursPerDay} jam/hari`);
-  metricCard(doc, MARGIN + 45, y, 40, 'Downtime', `-${data.downtimeReductionPercent}%`, 'Scenario indicator', true);
-  metricCard(doc, MARGIN + 90, y, 40, 'Energy', `+${data.energyEfficiencyPercent}%`, 'Scenario indicator');
-  metricCard(doc, MARGIN + 135, y, 39, 'Maintenance', `-${data.maintenanceReductionPercent}%`, 'Scenario indicator');
-
-  y += 48;
-  doc.setFillColor(...BLACK);
-  doc.roundedRect(MARGIN, y, CONTENT_W, 52, 4, 4, 'F');
-  doc.setTextColor(...YELLOW);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('OPERATIONAL FIT INDICATOR', MARGIN + 7, y + 14);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24);
-  doc.text(data.operationalFit.toUpperCase(), MARGIN + 7, y + 29);
-  doc.setFontSize(8);
-  doc.setTextColor(161, 161, 170);
-  doc.text(`${data.simulationShift} shift | ${data.simulationHoursPerDay} jam/hari | ${data.fleetSize} unit`, MARGIN + 7, y + 41);
-
-  y += 69;
-  doc.setFontSize(10);
-  doc.setTextColor(...BLACK);
-  doc.text('What this means for management', MARGIN, y);
-  const managementPoints = [
-    'Semakin tinggi shift dan jam operasi, semakin penting availability battery dan charging window.',
-    'Operational saving harus dipisahkan dari harga pembelian battery agar keputusan tidak bias terhadap harga awal.',
-    monetaryInputsAvailable ? `Scenario annual saving potential dari input biaya pengguna: ${rupiah(annualSavingScenario)}.` : 'Nominal saving belum dihitung karena cost rate perusahaan belum diisi.',
-    'Commercial payback period tidak dihitung sebelum harga investasi dan scope engineering tervalidasi.',
-  ];
-  bulletList(doc, managementPoints, MARGIN, y + 10, CONTENT_W, 6);
-
-  doc.setFillColor(255, 254, 240);
-  doc.setDrawColor(...YELLOW);
-  doc.roundedRect(MARGIN, 222, CONTENT_W, 35, 4, 4, 'FD');
-  doc.setTextColor(...BLACK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('DECISION GATE', MARGIN + 6, 234);
-  paragraph(doc, data.healthScore <= 65 ? 'Proceed to technical assessment for lithium-ion migration feasibility. Do not issue final investment decision before on-site verification.' : 'Maintain / optimize current battery while completing technical verification before considering technology migration.', MARGIN + 6, 243, CONTENT_W - 12, 8.2, BLACK, 4.5);
-
-  // PAGE 8 - RECOMMENDATION / VERIFICATION
-  newPage(doc, 8, 'Recommendation & Verification');
-  y = title(doc, '07 / Recommendation', 'Next Action & Verification Checklist');
-  doc.setFillColor(...BLACK);
-  doc.roundedRect(MARGIN, y, CONTENT_W, 43, 4, 4, 'F');
-  doc.setTextColor(...YELLOW);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('DRRKOBE RECOMMENDATION', MARGIN + 7, y + 13);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
-  doc.text(data.healthScore <= 65 ? 'TECHNICAL ASSESSMENT REQUIRED' : 'MONITOR & VERIFY', MARGIN + 7, y + 27);
-  doc.setFontSize(7.5);
-  doc.setTextColor(161, 161, 170);
-  doc.text(`Health ${data.healthScore}% | Urgency ${data.urgency} | Confidence ${data.confidence}%`, MARGIN + 7, y + 37);
-
-  y += 57;
+  doc.roundedRect(MARGIN, closingY, CONTENT_W, 28, 4, 4, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLACK);
-  doc.text('Priority actions', MARGIN, y);
-  y = bulletList(doc, data.recommendedActions || [], MARGIN, y + 9, CONTENT_W, 6);
-
-  y = Math.max(y + 4, 159);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('Verification checklist before commercial proposal', MARGIN, y);
-  const checklist = [
-    'Measure actual battery capacity / discharge performance.',
-    'Inspect cell voltage balance, connector, cable, and terminal condition.',
-    'Verify charger output, compatibility, error history, and charging window.',
-    'Confirm battery compartment dimension, weight, connector, and electrical interface.',
-    'Confirm duty cycle, shift pattern, break time, ambient temperature, and operator charging practice.',
-    'Validate forklift manufacturer requirements and selected battery / charger specification.',
-    'Review safety requirements, handling procedure, emergency response, and site charging infrastructure.',
-    'Only after technical validation: request commercial proposal and calculate investment payback.',
-  ];
-  bulletList(doc, checklist, MARGIN, y + 10, CONTENT_W, 8);
-
-  doc.setFillColor(244, 244, 245);
-  doc.roundedRect(MARGIN, 248, CONTENT_W, 18, 3, 3, 'F');
-  doc.setTextColor(...GREY);
+  doc.text('Langkah berikutnya', MARGIN + 7, closingY + 10);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.text('Disclaimer: report ini adalah decision-support assessment berdasarkan data pengguna dan engine DRRKOBE. Bukan sertifikat ISO, warranty, statutory inspection, atau pengganti pengukuran teknis aktual.', MARGIN + 5, 258);
+  doc.setFontSize(8.2);
+  doc.text(
+    (doc.splitTextToSize('Jadwalkan technical assessment bersama DRRKOBE untuk memvalidasi kondisi aktual dan menentukan pilihan yang paling sesuai untuk operasi perusahaan.', CONTENT_W - 14) as string[]),
+    MARGIN + 7,
+    closingY + 18,
+  );
 
-  const filename = `DRRKOBE_Assessment_${filenamePart(data.companyName || data.brand)}_${filenamePart(data.model)}_${filenamePart(data.diagnosisId.slice(0, 8))}.pdf`;
-  doc.save(filename);
+  doc.setFontSize(6.5);
+  doc.setTextColor(...GREY);
+  doc.text('Assessment ID:', MARGIN, 276);
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.diagnosisId, MARGIN + 20, 276);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Laporan ini bukan sertifikat ISO dan bukan pengganti inspeksi teknis lapangan.', PAGE_W - MARGIN, 276, { align: 'right' });
+
+  const fileName = `DRRKOBE_Assessment_${filenamePart(safe(data.companyName, 'Client'))}_${filenamePart(data.model)}_${filenamePart(data.diagnosisId)}.pdf`;
+  doc.save(fileName);
 }
