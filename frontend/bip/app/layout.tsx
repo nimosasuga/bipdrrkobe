@@ -32,13 +32,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <section>
               <p className="drr-footer__label">TAGLINE</p>
               <h2 className="drr-footer__headline">We Don't Sell Batteries.<br />We Reduce Your Downtime.</h2>
-              <p className="drr-footer__muted">No pricing. Pure diagnostic intelligence. Premium industrial battery assessment experience.</p>
+              <p className="drr-footer__muted">Tidak menampilkan harga. Fokus pada kondisi unit, bukti teknis, dan langkah pemeriksaan berikutnya.</p>
             </section>
 
             <section>
-              <p className="drr-footer__label">BIP V2 • 9-STEP JOURNEY</p>
+              <p className="drr-footer__label">BIP V2 • 9 LANGKAH</p>
               <p className="drr-footer__muted drr-footer__muted--dark">
-                Aggregated multi-issue analysis, deterministic Health Score, technical enrichment, operational impact, technology comparison, ROI indicator, dan technical assessment.
+                Dari identifikasi unit, gejala, dan kondisi operasional hingga diagnosis, dampak, perbandingan teknologi, potensi efisiensi, dan rekomendasi technical assessment.
               </p>
               <p className="drr-footer__palette">BLACK #0A0A0A · WHITE · YELLOW #FFCC00</p>
             </section>
