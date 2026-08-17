@@ -116,8 +116,9 @@ class LeadController extends Controller
     private function triggerQualification(Lead $lead, Diagnosis $diagnosis, array $answers, array $issues): void
     {
         $url = config('services.n8n.lead_qualification_url');
+        $syncToken = (string) config('services.n8n.sync_token');
 
-        if (!$url) {
+        if (!$url || $syncToken === '') {
             $lead->forceFill([
                 'qualification_status' => 'pending',
                 'qualification_error' => null,
@@ -153,6 +154,7 @@ class LeadController extends Controller
         try {
             $response = Http::asJson()
                 ->acceptJson()
+                ->withHeaders(['X-Sync-Token' => $syncToken])
                 ->connectTimeout(2)
                 ->timeout(5)
                 ->post($url, $payload);
