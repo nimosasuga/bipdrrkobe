@@ -44,7 +44,7 @@ export default function SiteHeader() {
         </div>
 
         <Link href="/diagnosis/form" className="drr-site-cta">
-          Request Assessment <span aria-hidden="true">→</span>
+          Mulai Diagnosis <span aria-hidden="true">→</span>
         </Link>
       </div>
     </header>
