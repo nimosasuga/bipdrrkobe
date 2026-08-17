@@ -115,7 +115,7 @@
                         </thead>
                         <tbody>
                             @foreach($recentLeads as $lead)
-                                @php $priority = $lead->lead_score ?: 'pending'; @endphp
+                                @php $priority = in_array($lead->lead_score, ['hot', 'warm', 'monitor'], true) ? $lead->lead_score : 'pending'; @endphp
                                 <tr>
                                     <td><span class="pill {{ $priority }}">{{ strtoupper($priority) }}</span></td>
                                     <td><div class="company">{{ $lead->perusahaan }}</div><div class="small">{{ $lead->kota ?: '-' }}</div></td>
