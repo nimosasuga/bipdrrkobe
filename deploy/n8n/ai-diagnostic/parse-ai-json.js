@@ -24,9 +24,6 @@ function parseJson(value) {
   if (!value || typeof value !== 'string') return {};
 
   const text = value.trim();
-
-  // Prioritaskan object JSON pertama hingga kurung kurawal terakhir.
-  // Ini tetap bekerja bila provider menambahkan teks sebelum/sesudah JSON.
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
 
@@ -37,7 +34,7 @@ function parseJson(value) {
         return extracted;
       }
     } catch {
-      // Lanjutkan ke pembersihan markdown di bawah.
+      // Lanjutkan ke pembersihan markdown.
     }
   }
 
@@ -61,7 +58,7 @@ function percent(value) {
   return Math.max(0, Math.min(100, Math.round(normalized)));
 }
 
-function text(value, max = 320) {
+function text(value, max = 180) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
@@ -75,11 +72,11 @@ const parsed = parseJson(extractText(raw)) || {};
 
 const causes = Array.isArray(parsed.probable_causes)
   ? parsed.probable_causes
-      .slice(0, 3)
+      .slice(0, 2)
       .map((item) => ({
-        cause: text(item?.cause, 120),
+        cause: text(item?.cause, 70),
         confidence: percent(item?.confidence),
-        reason: text(item?.reason, 220),
+        reason: text(item?.reason, 120),
       }))
       .filter((item) => item.cause)
   : [];
@@ -91,12 +88,12 @@ const urgency = allowedUrgency.has(urgencyValue) ? urgencyValue : 'medium';
 // Node mode: Run Once for Each Item.
 return {
   json: {
-    summary: text(parsed.summary, 420),
+    summary: text(parsed.summary, 180),
     probable_causes: causes,
-    technical_findings: list(parsed.technical_findings, 4, 220),
-    recommended_actions: list(parsed.recommended_actions, 4, 220),
+    technical_findings: list(parsed.technical_findings, 2, 120),
+    recommended_actions: list(parsed.recommended_actions, 2, 120),
     urgency,
     confidence: percent(parsed.confidence),
-    limitations: list(parsed.limitations, 3, 220),
+    limitations: list(parsed.limitations, 2, 120),
   },
 };
