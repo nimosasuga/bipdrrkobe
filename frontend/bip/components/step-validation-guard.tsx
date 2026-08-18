@@ -2,6 +2,10 @@
 
 import { useEffect } from 'react';
 
+function setText(node: Element | null | undefined, value: string) {
+  if (node && node.textContent !== value) node.textContent = value;
+}
+
 function leaf(root: ParentNode, text: string): HTMLElement | null {
   return Array.from(root.querySelectorAll<HTMLElement>('*')).find((node) => node.children.length === 0 && node.textContent?.trim() === text) ?? null;
 }
@@ -14,9 +18,9 @@ function rewriteMetric(root: ParentNode, label: string, value: string, sub: stri
   const labelNode = leaf(root, label);
   const card = labelNode?.parentElement;
   if (!labelNode || !card || card.children.length < 3) return;
-  if (nextLabel) labelNode.textContent = nextLabel;
-  card.children[1].textContent = value;
-  card.children[2].textContent = sub;
+  if (nextLabel) setText(labelNode, nextLabel);
+  setText(card.children[1], value);
+  setText(card.children[2], sub);
 }
 
 function validateStep6() {
@@ -29,19 +33,19 @@ function validateStep6() {
   rewriteMetric(section, 'PRODUCTIVITY', 'Perlu validasi', 'Tidak dihitung tanpa waktu henti aktual');
 
   const heading = Array.from(section.querySelectorAll<HTMLElement>('div')).find((node) => node.children.length === 0 && node.textContent?.trim() === 'Kontribusi tiap masalah terhadap kondisi operasional');
-  if (heading) heading.textContent = 'Sinyal dampak operasional yang perlu diverifikasi';
+  setText(heading, 'Sinyal dampak operasional yang perlu diverifikasi');
 
   Array.from(section.querySelectorAll<HTMLElement>('span')).forEach((node) => {
     if (/^\d+% bobot indikasi$/i.test(node.textContent?.trim() || '')) {
-      node.textContent = 'Perlu verifikasi';
+      setText(node, 'Perlu verifikasi');
       const progress = node.parentElement?.nextElementSibling as HTMLElement | null;
-      if (progress) progress.style.display = 'none';
+      if (progress && progress.style.display !== 'none') progress.style.display = 'none';
     }
   });
 
   Array.from(section.querySelectorAll<HTMLElement>('p')).forEach((node) => {
     if (node.textContent?.includes('Angka di atas adalah indikator operasional')) {
-      node.textContent = 'DRRKOBE tidak mengubah frekuensi kejadian menjadi jam downtime atau persentase productivity loss tanpa durasi kejadian aktual. Nilai finansial baru dihitung setelah data site tervalidasi.';
+      setText(node, 'DRRKOBE tidak mengubah frekuensi kejadian menjadi jam downtime atau persentase productivity loss tanpa durasi kejadian aktual. Nilai finansial baru dihitung setelah data site tervalidasi.');
     }
   });
 }
@@ -86,16 +90,16 @@ function validateStep7() {
     if (cells.length < 3) return;
     const replacement = replacements[cells[0].textContent?.trim() || ''];
     if (!replacement) return;
-    cells[1].textContent = replacement[0];
-    cells[2].textContent = replacement[1];
+    setText(cells[1], replacement[0]);
+    setText(cells[2], replacement[1]);
   });
 
   const lithiumHeader = Array.from(section.querySelectorAll<HTMLElement>('th')).find((node) => node.textContent?.includes('LI-ION'));
-  if (lithiumHeader) lithiumHeader.textContent = 'LI-ION UNTUK DIEVALUASI';
+  setText(lithiumHeader, 'LI-ION UNTUK DIEVALUASI');
 
   Array.from(section.querySelectorAll<HTMLElement>('div')).forEach((node) => {
     if (node.textContent?.includes('Perbandingan ini digunakan sebagai bahan evaluasi teknis dan operasional.')) {
-      node.textContent = 'Perbandingan bersifat kualitatif. Nilai cycle life, charging time, efisiensi energi, temperatur, kompatibilitas, dan keselamatan harus diverifikasi terhadap datasheet battery/charger serta kondisi site. Tidak ada harga yang ditampilkan.';
+      setText(node, 'Perbandingan bersifat kualitatif. Nilai cycle life, charging time, efisiensi energi, temperatur, kompatibilitas, dan keselamatan harus diverifikasi terhadap datasheet battery/charger serta kondisi site. Tidak ada harga yang ditampilkan.');
     }
   });
 }
@@ -105,28 +109,31 @@ function validateStep8() {
   if (!section) return;
 
   const heading = section.querySelector('h1');
-  if (heading?.textContent) heading.textContent = heading.textContent.replace('Hitung Potensi Efisiensi', 'Validasi Kebutuhan Operasional');
+  if (heading?.textContent?.includes('Hitung Potensi Efisiensi')) {
+    setText(heading, heading.textContent.replace('Hitung Potensi Efisiensi', 'Validasi Kebutuhan Operasional'));
+  }
 
   const eyebrow = Array.from(section.querySelectorAll<HTMLElement>('div')).find((node) => node.children.length === 0 && node.textContent?.includes('STEP 8 / 9'));
-  if (eyebrow) eyebrow.textContent = 'STEP 8 / 9 — OPERATIONAL READINESS';
+  setText(eyebrow, 'STEP 8 / 9 — OPERATIONAL READINESS');
 
   rewriteMetric(section, 'DOWNTIME', 'Perlu data aktual', 'Butuh durasi kejadian aktual', 'VALIDASI DOWNTIME');
   rewriteMetric(section, 'ENERGY', 'Perlu data charger', 'Butuh baseline konsumsi aktual', 'VALIDASI ENERGI');
   rewriteMetric(section, 'MAINTENANCE', 'Perlu baseline', 'Butuh aktivitas maintenance aktual', 'VALIDASI MAINTENANCE');
+
   const fitLabel = leaf(section, 'OPERATIONAL FIT');
   if (fitLabel) {
-    fitLabel.textContent = 'KEBUTUHAN OPERASI';
+    setText(fitLabel, 'KEBUTUHAN OPERASI');
     const card = fitLabel.parentElement;
-    if (card?.children[2]) card.children[2].textContent = 'Indikator berdasarkan shift dan jam operasi';
+    if (card?.children[2]) setText(card.children[2], 'Indikator berdasarkan shift dan jam operasi');
   }
 
   Array.from(section.querySelectorAll<HTMLElement>('div')).forEach((node) => {
     const text = node.textContent?.trim() || '';
     if (text.includes('simulasi persentase adalah indikator awal')) {
-      node.textContent = 'Catatan: tahap ini membaca kebutuhan operasi. DRRKOBE tidak menghasilkan persentase saving, pengurangan downtime, atau ROI sebelum baseline site tersedia.';
+      setText(node, 'Catatan: tahap ini membaca kebutuhan operasi. DRRKOBE tidak menghasilkan persentase saving, pengurangan downtime, atau ROI sebelum baseline site tersedia.');
     }
     if (text.startsWith('Potensi operasional:')) {
-      node.textContent = 'Dasar keputusan: jumlah unit, jam operasi, shift, charging window, downtime aktual, kondisi battery, dan kompatibilitas charger perlu dibaca bersama sebelum membahas potensi efisiensi atau investasi.';
+      setText(node, 'Dasar keputusan: jumlah unit, jam operasi, shift, charging window, downtime aktual, kondisi battery, dan kompatibilitas charger perlu dibaca bersama sebelum membahas potensi efisiensi atau investasi.');
     }
   });
 
@@ -137,22 +144,22 @@ function validateStep8() {
       const label = row.querySelector('span')?.textContent?.trim();
       const value = row.querySelector('strong');
       if (!value) return;
-      if (label === 'Downtime') value.textContent = 'Perlu durasi aktual';
-      if (label === 'Charging') value.textContent = 'Lihat input charging';
-      if (label === 'Maintenance') value.textContent = 'Lihat input perawatan';
-      if (label === 'Productivity') value.textContent = 'Perlu validasi';
+      if (label === 'Downtime') setText(value, 'Perlu durasi aktual');
+      if (label === 'Charging') setText(value, 'Lihat input charging');
+      if (label === 'Maintenance') setText(value, 'Lihat input perawatan');
+      if (label === 'Productivity') setText(value, 'Perlu validasi');
     });
   }
 
   const financial = leaf(section, 'FINANCIAL STATUS')?.parentElement;
   if (financial && financial.children.length >= 3) {
-    financial.children[1].textContent = 'Pending Site Validation';
-    financial.children[2].textContent = 'Nilai Rupiah, saving, dan ROI menunggu durasi downtime, baseline biaya, konsumsi, serta data maintenance yang tervalidasi.';
+    setText(financial.children[1], 'Pending Site Validation');
+    setText(financial.children[2], 'Nilai Rupiah, saving, dan ROI menunggu durasi downtime, baseline biaya, konsumsi, serta data maintenance yang tervalidasi.');
   }
 
   Array.from(section.querySelectorAll<HTMLElement>('p')).forEach((node) => {
     if (node.textContent?.startsWith('Tidak mengetahui biaya internal tidak menghambat diagnosis.')) {
-      node.textContent = 'Tidak mengetahui biaya internal tidak menghambat diagnosis. Nilai Rupiah, saving, dan ROI tidak dihitung otomatis sampai durasi downtime, baseline biaya, konsumsi, serta biaya maintenance benar-benar tersedia.';
+      setText(node, 'Tidak mengetahui biaya internal tidak menghambat diagnosis. Nilai Rupiah, saving, dan ROI tidak dihitung otomatis sampai durasi downtime, baseline biaya, konsumsi, serta biaya maintenance benar-benar tersedia.');
     }
   });
 }
@@ -179,7 +186,8 @@ function validateWhatsapp() {
       }
 
       url.searchParams.set('text', filtered.join('\n'));
-      anchor.href = url.toString();
+      const nextHref = url.toString();
+      if (anchor.href !== nextHref) anchor.href = nextHref;
     } catch {
       // Link WhatsApp asli tetap dipertahankan bila parsing gagal.
     }
