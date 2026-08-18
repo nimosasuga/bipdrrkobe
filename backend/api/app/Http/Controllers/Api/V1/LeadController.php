@@ -67,7 +67,7 @@ class LeadController extends Controller
             ]
         );
 
-        $sheetStatus = $this->syncToSpreadsheet($lead, $diagnosis, $issues);
+        $sheetStatus = $this->syncToSpreadsheet($lead, $diagnosis, $answers, $issues);
 
         if ($lead->qualification_status !== 'qualified') {
             $this->triggerQualification($lead, $diagnosis, $answers, $issues);
@@ -133,9 +133,15 @@ class LeadController extends Controller
         $downtimeHigh = ($answers['downtime'] ?? null) === true
             || in_array($answers['downtime_frequency'] ?? null, ['three_four', 'five_plus'], true);
 
+        $industrySector = is_string($answers['industry_sector'] ?? null)
+            ? $answers['industry_sector']
+            : null;
+
         $payload = [
             'lead_id' => $lead->id,
             'diagnosis_id' => $diagnosis->id,
+            'industry_sector' => $industrySector,
+            'industry_sector_label' => $this->industrySectorLabel($industrySector),
             'health_score' => $diagnosis->health_score,
             'shift_per_day' => $diagnosis->shift,
             'multi_shift' => (int) $diagnosis->shift >= 2,
@@ -175,8 +181,12 @@ class LeadController extends Controller
         }
     }
 
-    private function syncToSpreadsheet(Lead $lead, Diagnosis $diagnosis, array $issues): string
-    {
+    private function syncToSpreadsheet(
+        Lead $lead,
+        Diagnosis $diagnosis,
+        array $answers,
+        array $issues
+    ): string {
         $url = config('services.n8n.lead_capture_url');
 
         if (!$url) {
@@ -190,11 +200,16 @@ class LeadController extends Controller
 
         $model = $diagnosis->forkliftModel;
         $brand = $model?->brand;
+        $industrySector = is_string($answers['industry_sector'] ?? null)
+            ? $answers['industry_sector']
+            : null;
 
         $payload = [
             'captured_at' => now()->toIso8601String(),
             'lead_id' => $lead->id,
             'diagnosis_id' => $diagnosis->id,
+            'industry_sector' => $industrySector,
+            'industry_sector_label' => $this->industrySectorLabel($industrySector),
             'pt' => $lead->perusahaan,
             'lokasi' => $lead->kota,
             'nama_user' => $lead->nama,
@@ -243,6 +258,20 @@ class LeadController extends Controller
 
             return 'failed';
         }
+    }
+
+    private function industrySectorLabel(?string $sector): ?string
+    {
+        return match ($sector) {
+            'food_beverage' => 'Industri Makanan dan Minuman (FMCG / Food & Beverage)',
+            'pharma_medical_cosmetics' => 'Industri Farmasi, Medis, dan Kosmetik',
+            'logistics_3pl_ecommerce' => 'Penyedia Logistik Pihak Ketiga (3PL) & Gudang E-Commerce',
+            'cold_storage' => 'Gudang Pendingin (Cold Storage)',
+            'electronics_automotive' => 'Manufaktur Elektronik dan Komponen Otomotif',
+            'textile_office_paper' => 'Industri Tekstil dan Perkantoran / Percetakan Kertas',
+            'retail_wholesale' => 'Ritel Besar dan Pusat Grosir (Hypermarket / Supermarket)',
+            default => null,
+        };
     }
 
     private function authorizeN8n(Request $request): ?JsonResponse
