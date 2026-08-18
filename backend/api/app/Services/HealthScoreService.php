@@ -4,6 +4,8 @@ namespace App\Services;
 
 class HealthScoreService
 {
+    private const MIN_SCREENING_SCORE = 15;
+
     public function calculate(array $data): array
     {
         $score = 100;
@@ -13,8 +15,10 @@ class HealthScoreService
         $batteryType = $data['battery_type'] ?? 'lead_acid';
         $answers = $data['answers'] ?? [];
 
+        // Age is a strong baseline risk, but this assessment is still based on
+        // reported operating data rather than a measured battery SOH test.
         if ($umur > 4) {
-            $score -= 30;
+            $score -= 25;
         } elseif ($umur >= 3) {
             $score -= 20;
         } elseif ($umur >= 2) {
@@ -22,18 +26,18 @@ class HealthScoreService
         }
 
         if (($answers['charging_lama'] ?? null) === true) {
-            $score -= 15;
+            $score -= 12;
         }
 
         if ($shift >= 3 && $batteryType === 'lead_acid') {
-            $score -= 15;
+            $score -= 10;
         }
 
         if (array_key_exists('isi_air', $answers) && $answers['isi_air'] !== null) {
             $isiAir = (int) $answers['isi_air'];
 
             if ($isiAir < 1) {
-                $score -= 15;
+                $score -= 10;
             }
         }
 
@@ -42,10 +46,12 @@ class HealthScoreService
         }
 
         if (($answers['cepat_habis'] ?? null) === true) {
-            $score -= 10;
+            $score -= 15;
         }
 
-        $score = max(0, min(100, $score));
+        // Questionnaire-based screening should not imply a laboratory-confirmed
+        // 0% state of health. Reserve the bottom end for verified technical data.
+        $score = max(self::MIN_SCREENING_SCORE, min(100, $score));
 
         return [
             'health_score' => $score,
