@@ -174,6 +174,7 @@ class AiDiagnosticService
             'diagnosis' => [
                 'health_score' => $context['diagnosis']['health_score'],
                 'battery_type' => $context['diagnosis']['battery_type'],
+                'industry_sector' => $answers['industry_sector'] ?? null,
                 'age_years' => $context['diagnosis']['umur_battery'],
                 'shift_per_day' => $context['diagnosis']['shift'],
                 'operating_hours_per_day' => $context['diagnosis']['jam_operasi'],
