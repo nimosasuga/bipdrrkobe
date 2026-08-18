@@ -124,6 +124,7 @@ class AiDiagnosticService
             : [];
 
         $observations = $this->normaliseAiObservations($answers);
+        $industryContext = $this->industrySectorContext($answers['industry_sector'] ?? null);
 
         $issues = collect($answers['issues'] ?? [])
             ->filter(fn ($value) => is_string($value) && trim($value) !== '')
@@ -179,6 +180,7 @@ class AiDiagnosticService
                 'shift_per_day' => $context['diagnosis']['shift'],
                 'operating_hours_per_day' => $context['diagnosis']['jam_operasi'],
             ],
+            'industry_context' => $industryContext,
             'forklift' => array_filter([
                 'brand' => $context['forklift']['brand'] ?? null,
                 'model' => $context['forklift']['model_code']
@@ -368,6 +370,110 @@ class AiDiagnosticService
         }
 
         return $observations;
+    }
+
+    private function industrySectorContext(mixed $sector): ?array
+    {
+        if (!is_string($sector) || $sector === '') {
+            return null;
+        }
+
+        $contexts = [
+            'food_beverage' => [
+                'label' => 'Industri Makanan dan Minuman (FMCG / Food & Beverage)',
+                'operational_context' => [
+                    'Pergerakan material dapat berlangsung berulang antara warehouse, produksi, dan distribusi.',
+                    'Ketersediaan forklift perlu dibaca terhadap ritme material flow dan jadwal shift yang diinput user.',
+                ],
+                'verification_focus' => [
+                    'Kesesuaian runtime battery terhadap durasi shift aktual.',
+                    'Kecukupan charging window terhadap pola penggunaan unit.',
+                    'Pola downtime yang berulang pada aktivitas material handling.',
+                ],
+            ],
+            'pharma_medical_cosmetics' => [
+                'label' => 'Industri Farmasi, Medis, dan Kosmetik',
+                'operational_context' => [
+                    'Konsistensi material handling dan kesiapan unit dapat menjadi bagian penting dari kontinuitas operasi.',
+                    'Interpretasi harus tetap berdasarkan data battery, charger, shift, dan gejala yang benar-benar diberikan user.',
+                ],
+                'verification_focus' => [
+                    'Konsistensi runtime battery sepanjang kebutuhan kerja aktual.',
+                    'Riwayat charging, maintenance, dan gangguan unit yang teramati.',
+                    'Verifikasi kondisi battery sebelum menyimpulkan kebutuhan perubahan teknologi.',
+                ],
+            ],
+            'logistics_3pl_ecommerce' => [
+                'label' => 'Penyedia Logistik Pihak Ketiga (3PL) & Gudang E-Commerce',
+                'operational_context' => [
+                    'Inbound, storage, picking, staging, dan outbound dapat meningkatkan frekuensi penggunaan material handling.',
+                    'Availability armada perlu dibaca bersama jam operasi, jumlah shift, dan gejala downtime yang diinput user.',
+                ],
+                'verification_focus' => [
+                    'Runtime battery terhadap jam operasi dan kebutuhan multi-shift.',
+                    'Charging window saat jeda kerja dan pergantian shift.',
+                    'Frekuensi downtime serta dampaknya terhadap kesiapan armada.',
+                ],
+            ],
+            'cold_storage' => [
+                'label' => 'Gudang Pendingin (Cold Storage)',
+                'operational_context' => [
+                    'Lingkungan gudang pendingin merupakan konteks operasi khusus yang perlu dicatat saat menilai performa battery.',
+                    'Jangan mengasumsikan temperatur aktual atau dampaknya tanpa data site yang terukur.',
+                ],
+                'verification_focus' => [
+                    'Runtime battery aktual pada lingkungan kerja yang dilaporkan.',
+                    'Pola charging dan recovery battery terhadap jadwal operasi.',
+                    'Verifikasi kondisi battery, charger, koneksi, dan riwayat downtime di site.',
+                ],
+            ],
+            'electronics_automotive' => [
+                'label' => 'Manufaktur Elektronik dan Komponen Otomotif',
+                'operational_context' => [
+                    'Material handling dapat mendukung produksi, line feeding, warehouse, dan distribusi komponen.',
+                    'Kesiapan unit perlu dikaitkan dengan pola shift dan kontinuitas material flow yang diberikan user.',
+                ],
+                'verification_focus' => [
+                    'Konsistensi availability forklift pada jam operasi aktual.',
+                    'Runtime battery dan pola charging pada pergantian shift.',
+                    'Downtime berulang yang berpotensi mengganggu aliran material.',
+                ],
+            ],
+            'textile_office_paper' => [
+                'label' => 'Industri Tekstil dan Perkantoran / Percetakan Kertas',
+                'operational_context' => [
+                    'Perpindahan bahan baku, produk jadi, pallet, dan material rutin dapat membentuk pola kerja berulang.',
+                    'Analisis harus tetap mengikuti intensitas operasi yang benar-benar diinput user, bukan asumsi sektoral.',
+                ],
+                'verification_focus' => [
+                    'Runtime battery terhadap kebutuhan kerja harian.',
+                    'Frekuensi maintenance dan charging yang dilaporkan.',
+                    'Pola penurunan daya atau downtime sebelum rekomendasi lanjutan.',
+                ],
+            ],
+            'retail_wholesale' => [
+                'label' => 'Ritel Besar dan Pusat Grosir (Hypermarket / Supermarket)',
+                'operational_context' => [
+                    'Replenishment, gudang, dan distribusi internal dapat menciptakan penggunaan unit yang berulang.',
+                    'Availability forklift perlu dinilai terhadap jam operasi dan kebutuhan replenishment yang benar-benar diinformasikan user.',
+                ],
+                'verification_focus' => [
+                    'Runtime battery selama periode penggunaan aktual.',
+                    'Charging window di antara periode aktivitas unit.',
+                    'Gejala downtime dan penurunan performa yang berulang.',
+                ],
+            ],
+        ];
+
+        if (!isset($contexts[$sector])) {
+            return null;
+        }
+
+        return [
+            'sector' => $sector,
+            ...$contexts[$sector],
+            'usage_rule' => 'Gunakan konteks sektor hanya untuk memprioritaskan interpretasi, pertanyaan verifikasi, dan recommended actions. Jangan mengubah health_score, mengarang data site, mengasumsikan temperatur, throughput, compliance, biaya, atau dampak finansial yang tidak diberikan user.',
+        ];
     }
 
     private function ruleIsApplicable(array $rule, array $answers, array $context): bool
