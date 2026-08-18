@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Internal;
 use App\Http\Controllers\Controller;
 use App\Models\FunnelEvent;
 use App\Models\Lead;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -25,6 +26,7 @@ class InternalDashboardController extends Controller
     public function __invoke(Request $request): View
     {
         $eventNames = [
+            'bip_visited',
             'diagnosis_started',
             'diagnosis_completed',
             'lead_captured',
@@ -61,6 +63,59 @@ class InternalDashboardController extends Controller
             'lost' => Lead::query()->where('status', 'lost')->count(),
         ];
 
+        $trafficSources = FunnelEvent::query()
+            ->where('event', 'bip_visited')
+            ->whereRaw("COALESCE(metadata_json->>'test', 'false') <> 'true'")
+            ->selectRaw("COALESCE(NULLIF(metadata_json->>'utm_source', ''), 'direct') AS utm_source")
+            ->selectRaw("COALESCE(NULLIF(metadata_json->>'utm_campaign', ''), 'direct') AS utm_campaign")
+            ->selectRaw("COALESCE(metadata_json->>'utm_content', '') AS utm_content")
+            ->selectRaw('COUNT(DISTINCT session_id) AS users')
+            ->groupByRaw("COALESCE(NULLIF(metadata_json->>'utm_source', ''), 'direct'), COALESCE(NULLIF(metadata_json->>'utm_campaign', ''), 'direct'), COALESCE(metadata_json->>'utm_content', '')")
+            ->orderByDesc('users')
+            ->limit(10)
+            ->get()
+            ->map(function ($row): array {
+                $source = (string) $row->utm_source;
+                $campaign = (string) $row->utm_campaign;
+                $content = (string) $row->utm_content;
+
+                $baseEventQuery = function (string $event) use ($source, $campaign, $content): Builder {
+                    return FunnelEvent::query()
+                        ->where('event', $event)
+                        ->whereRaw("COALESCE(metadata_json->>'test', 'false') <> 'true'")
+                        ->whereRaw("COALESCE(NULLIF(metadata_json->>'utm_source', ''), 'direct') = ?", [$source])
+                        ->whereRaw("COALESCE(NULLIF(metadata_json->>'utm_campaign', ''), 'direct') = ?", [$campaign])
+                        ->whereRaw("COALESCE(metadata_json->>'utm_content', '') = ?", [$content]);
+                };
+
+                $assessmentStarted = $baseEventQuery('diagnosis_started')
+                    ->distinct()
+                    ->count('session_id');
+
+                $leads = $baseEventQuery('lead_captured')
+                    ->whereNotNull('lead_id')
+                    ->distinct()
+                    ->count('lead_id');
+
+                $deals = $baseEventQuery('lead_captured')
+                    ->whereNotNull('lead_id')
+                    ->whereHas('lead', function (Builder $query): void {
+                        $query->whereIn('status', self::DEAL_STATUSES);
+                    })
+                    ->distinct()
+                    ->count('lead_id');
+
+                return [
+                    'source' => $source,
+                    'campaign' => $campaign,
+                    'content' => $content,
+                    'users' => (int) $row->users,
+                    'assessment_started' => $assessmentStarted,
+                    'leads' => $leads,
+                    'deals' => $deals,
+                ];
+            });
+
         $totalLeads = Lead::query()->count();
 
         $recentLeads = Lead::query()
@@ -87,6 +142,7 @@ class InternalDashboardController extends Controller
             'eventCounts' => $eventCounts,
             'totalLeads' => $totalLeads,
             'salesStatus' => $salesStatus,
+            'trafficSources' => $trafficSources,
             'dealRate' => $this->rate((int) $salesStatus['deal'], $totalLeads),
             'recentLeads' => $recentLeads,
         ]);
