@@ -1,0 +1,200 @@
+/* DRRKOBE landing — responsive layer */
+
+img{max-width:100%}
+.hero,.section,.bottom,.value-strip{scroll-margin-top:88px}
+.cta,.nav-link{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+/* Large desktop */
+@media (min-width:1280px){
+  .wrap{max-width:1280px;padding-left:32px;padding-right:32px}
+  .hero{min-height:calc(100svh - 84px);padding-top:54px;padding-bottom:64px}
+  .hero h1{font-size:clamp(62px,5vw,76px);max-width:720px}
+  .lead{font-size:19px}
+  .hero-media,.hero-media img{min-height:520px}
+  .section{padding-top:78px;padding-bottom:78px}
+  .section h2{font-size:42px}
+  .unit-photo{height:280px}
+  .battery-card,.battery-card img{min-height:450px}
+}
+
+/* Laptop / compact desktop */
+@media (min-width:1024px) and (max-width:1279px){
+  .wrap{max-width:1180px;padding-left:28px;padding-right:28px}
+  .hero{gap:38px;padding-top:48px;padding-bottom:52px}
+  .hero h1{font-size:clamp(52px,5.3vw,62px)}
+  .lead{font-size:17px}
+  .hero-media,.hero-media img{min-height:440px}
+  .section{padding-top:62px;padding-bottom:62px}
+  .section h2{font-size:36px}
+  .unit-photo{height:235px}
+  .battery-card,.battery-card img{min-height:390px}
+}
+
+/* Tablet landscape */
+@media (min-width:900px) and (max-width:1023px){
+  .wrap{padding-left:28px;padding-right:28px}
+  .nav{height:78px}
+  .hero{grid-template-columns:1fr;gap:30px;padding-top:42px;padding-bottom:48px}
+  .hero>div:first-child{max-width:780px}
+  .hero h1{font-size:clamp(50px,6.5vw,60px);max-width:840px}
+  .lead{max-width:760px}
+  .hero-media,.hero-media img{min-height:430px}
+  .value-strip{grid-template-columns:repeat(3,1fr);margin-bottom:58px}
+  .problem-grid{grid-template-columns:repeat(3,1fr)}
+  .brand-wall{grid-template-columns:repeat(5,1fr)}
+  .unit-grid{grid-template-columns:repeat(3,1fr);gap:12px}
+  .unit-photo{height:210px}
+  .unit-copy{padding:17px}
+  .unit-title{font-size:18px}
+  .battery-compare{grid-template-columns:1fr 1fr}
+  .battery-card,.battery-card img{min-height:360px}
+  .gallery{grid-template-columns:1.2fr .8fr .8fr}
+  .gallery-item:first-child{grid-column:auto;grid-row:span 2}
+  .sector-grid{grid-template-columns:1fr 1fr}
+  .flow{grid-template-columns:repeat(2,1fr)}
+  .section{padding-top:58px;padding-bottom:58px}
+}
+
+/* Tablet portrait */
+@media (min-width:768px) and (max-width:899px){
+  .wrap{padding-left:26px;padding-right:26px}
+  .nav{height:76px}
+  .brand{font-size:23px}
+  .hero{grid-template-columns:1fr;gap:28px;padding-top:38px;padding-bottom:44px}
+  .hero h1{font-size:clamp(46px,7.2vw,56px);max-width:760px}
+  .lead{font-size:17px;max-width:720px}
+  .hero-media,.hero-media img{min-height:410px}
+  .value-strip{grid-template-columns:repeat(3,1fr);margin-bottom:54px}
+  .value-item{padding:18px}
+  .problem-grid{grid-template-columns:1fr 1fr}
+  .problem-card:last-child{grid-column:1/-1}
+  .brand-wall{grid-template-columns:repeat(5,1fr)}
+  .brand-card{min-height:92px;padding:12px}
+  .brand-card img{width:40px;height:40px}
+  .unit-grid{grid-template-columns:1fr 1fr}
+  .unit-card:last-child{grid-column:1/-1}
+  .unit-photo{height:230px}
+  .battery-compare{grid-template-columns:1fr 1fr}
+  .battery-card,.battery-card img{min-height:350px}
+  .battery-copy strong{font-size:23px}
+  .gallery{grid-template-columns:1fr 1fr}
+  .gallery-item:first-child{grid-column:1/-1;grid-row:auto;min-height:340px}
+  .gallery-item{min-height:220px}
+  .sector-grid{grid-template-columns:1fr 1fr}
+  .flow{grid-template-columns:1fr 1fr}
+  .section{padding-top:54px;padding-bottom:54px}
+  .section-head{align-items:flex-start}
+  .section h2{font-size:35px}
+  .bottom-box{padding:32px}
+}
+
+/* Mobile */
+@media (max-width:767px){
+  .wrap{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+  .nav{height:70px;gap:14px}
+  .brand{font-size:21px;white-space:nowrap}
+  .badge{font-size:9px;padding:4px 7px}
+  .nav-link{font-size:9px;line-height:1.25;text-align:right;max-width:132px}
+
+  .hero{grid-template-columns:1fr;gap:24px;padding-top:30px;padding-bottom:38px}
+  .eyebrow{font-size:10px;letter-spacing:.1em}
+  .hero h1{font-size:clamp(36px,10.4vw,46px);line-height:.98;letter-spacing:-.052em;margin-top:10px;margin-bottom:16px;overflow-wrap:break-word}
+  .lead{font-size:16px;line-height:1.62}
+  .cta-row{display:grid;grid-template-columns:1fr;gap:10px;margin-top:22px}
+  .cta{width:100%;min-height:48px;padding:14px 16px;font-size:12px}
+  .micro{font-size:10px;margin-top:12px}
+
+  .hero-media{min-height:330px;border-radius:24px}
+  .hero-media img{min-height:330px}
+  .hero-tag{top:14px;right:14px;font-size:8px;padding:7px 9px}
+  .hero-copy{left:18px;right:18px;bottom:18px}
+  .hero-copy strong{font-size:22px}
+  .hero-copy span{font-size:11px;line-height:1.55}
+
+  .value-strip{grid-template-columns:1fr;margin-bottom:42px;border-radius:20px}
+  .value-item{padding:18px}
+  .value-item+ .value-item{border-left:0;border-top:1px solid #e4e4df}
+  .value-title{font-size:16px}
+
+  .section{padding-top:46px;padding-bottom:46px}
+  .section-head{align-items:flex-start;flex-direction:column;gap:12px;margin-bottom:20px}
+  .section h2{font-size:clamp(28px,8vw,35px);line-height:1.04;letter-spacing:-.04em}
+  .section-lead{font-size:12px;line-height:1.65;max-width:none}
+
+  .problem-grid,.unit-grid,.battery-compare,.sector-grid,.flow{grid-template-columns:1fr}
+  .problem-card,.unit-card:last-child{grid-column:auto}
+  .problem-card{min-height:auto;padding:20px}
+  .problem-card h3{font-size:20px;margin-top:22px}
+
+  .brand-wall{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .brand-card{min-height:86px;padding:11px}
+  .brand-card img{width:36px;height:36px}
+  .brand-card b{font-size:11px}
+
+  .unit-grid{gap:12px}
+  .unit-card{border-radius:20px}
+  .unit-photo{height:auto;aspect-ratio:16/10}
+  .unit-photo img{height:100%;object-fit:cover}
+  .unit-chip{left:12px;bottom:12px;font-size:8px;max-width:calc(100% - 24px)}
+  .unit-copy{padding:17px}
+  .unit-title{font-size:19px}
+
+  .battery-compare{gap:12px}
+  .battery-card,.battery-card img{min-height:340px}
+  .battery-card{border-radius:22px}
+  .battery-label{top:14px;left:14px}
+  .battery-copy{left:18px;right:18px;bottom:18px}
+  .battery-copy strong{font-size:23px}
+  .battery-copy span{font-size:11px}
+  .battery-note{padding:18px;border-radius:18px;gap:16px}
+  .battery-note p{font-size:12px}
+
+  .gallery{grid-template-columns:1fr;gap:10px}
+  .gallery-item,.gallery-item:first-child{grid-column:auto;grid-row:auto;min-height:0;aspect-ratio:16/10;border-radius:18px}
+  .gallery-item img{height:100%}
+
+  .sector-card{padding:17px;gap:12px;border-radius:18px}
+  .sector-no{width:36px;height:36px}
+  .sector-title{font-size:14px}
+  .sector-text{font-size:11px}
+
+  .flow{gap:9px}
+  .flow-card{padding:18px}
+
+  .bottom{padding-top:46px;padding-bottom:58px}
+  .bottom-box{padding:24px;border-radius:22px;align-items:stretch;flex-direction:column;gap:20px}
+  .bottom-box h2{font-size:clamp(28px,8vw,34px);line-height:1.04}
+  .bottom-box p{font-size:12px}
+
+  .footer{padding-top:20px;padding-bottom:28px;display:grid;grid-template-columns:1fr;gap:8px}
+  .legal{margin-top:6px}
+}
+
+/* Small phones */
+@media (max-width:390px){
+  .wrap{padding-left:14px;padding-right:14px}
+  .nav-link{max-width:118px;font-size:8.5px}
+  .hero h1{font-size:clamp(34px,10.6vw,40px)}
+  .hero-media,.hero-media img{min-height:300px}
+  .hero-copy strong{font-size:20px}
+  .brand-wall{gap:7px}
+  .brand-card{min-height:80px}
+  .section{padding-top:42px;padding-bottom:42px}
+  .battery-card,.battery-card img{min-height:315px}
+}
+
+/* Touch devices: remove desktop-only hover lift/depth feel */
+@media (hover:none),(pointer:coarse){
+  .unit-card:hover,.sector-card:hover,.flow-card:hover,.value-item:hover,.problem-card:hover,.brand-card:hover{transform:none;box-shadow:none}
+  .gallery-item:hover img,.battery-card:hover img,.unit-card:hover .unit-photo img{transform:none}
+  .cta:hover{transform:none;box-shadow:none}
+  .cta::after{display:none}
+}
+
+/* Short landscape screens */
+@media (max-height:520px) and (orientation:landscape){
+  .nav{height:60px}
+  .hero{padding-top:24px;padding-bottom:30px}
+  .hero h1{font-size:clamp(34px,6vw,48px)}
+  .hero-media,.hero-media img{min-height:300px}
+}
