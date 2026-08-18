@@ -50,7 +50,18 @@ type WateringFrequency = 'never' | 'less_than_weekly' | 'once_weekly' | 'twice_w
 type DowntimeFrequency = 'never' | 'once_twice' | 'three_four' | 'five_plus' | 'unknown';
 type ChargerErrorFrequency = 'never' | 'once' | 'repeated' | 'unknown';
 type HydraulicFrequency = 'never' | 'sometimes' | 'often' | 'unknown';
+type IndustrySector = 'food_beverage' | 'pharma_medical_cosmetics' | 'logistics_3pl_ecommerce' | 'cold_storage' | 'electronics_automotive' | 'textile_office_paper' | 'retail_wholesale';
 type DetailOption<T extends string> = { value: T; label: string; note?: string };
+
+const industrySectors: Array<{ value: IndustrySector; label: string }> = [
+  { value: 'food_beverage', label: 'Industri Makanan dan Minuman (FMCG / Food & Beverage)' },
+  { value: 'pharma_medical_cosmetics', label: 'Industri Farmasi, Medis, dan Kosmetik' },
+  { value: 'logistics_3pl_ecommerce', label: 'Penyedia Logistik Pihak Ketiga (3PL) & Gudang E-Commerce' },
+  { value: 'cold_storage', label: 'Gudang Pendingin (Cold Storage)' },
+  { value: 'electronics_automotive', label: 'Manufaktur Elektronik dan Komponen Otomotif' },
+  { value: 'textile_office_paper', label: 'Industri Tekstil dan Perkantoran / Percetakan Kertas' },
+  { value: 'retail_wholesale', label: 'Ritel Besar dan Pusat Grosir (Hypermarket / Supermarket)' },
+];
 
 const issues = [
   ['battery_fast', 'Battery Tidak Bertahan Sampai Akhir Shift', 'Daya turun lebih cepat dari kebutuhan kerja normal.'],
@@ -130,6 +141,7 @@ export default function DiagnosisFormPage() {
   const [step, setStep] = useState(1);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [models, setModels] = useState<ForkliftModel[]>([]);
+  const [industrySector, setIndustrySector] = useState<IndustrySector | ''>('');
   const [brandId, setBrandId] = useState('');
   const [modelId, setModelId] = useState('');
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
@@ -166,6 +178,7 @@ export default function DiagnosisFormPage() {
   const jamOperasi = Math.min(24, shift * 8);
   const selectedModel = useMemo(() => models.find((item) => item.id === modelId) ?? null, [models, modelId]);
   const selectedBrand = useMemo(() => brands.find((item) => item.id === brandId) ?? null, [brands, brandId]);
+  const selectedIndustrySector = useMemo(() => industrySectors.find((item) => item.value === industrySector)?.label ?? '-', [industrySector]);
   const selectedIssueLabels = useMemo(
     () => issues.filter(([key]) => selectedIssues.includes(key)).map(([, label]) => label),
     [selectedIssues],
@@ -313,6 +326,7 @@ export default function DiagnosisFormPage() {
 
   function goNext() {
     setError('');
+    if (step === 1 && !industrySector) return setError('Pilih bidang industri terlebih dahulu.');
     if (step === 1 && !modelId) return setError('Pilih brand dan model forklift terlebih dahulu.');
     if (step === 3 && selectedIssues.length === 0) return setError('Pilih minimal satu masalah yang benar-benar terjadi.');
     setStep((current) => Math.min(9, current + 1));
@@ -341,7 +355,7 @@ export default function DiagnosisFormPage() {
   }
 
   async function createDiagnosis() {
-    if (!modelId) return;
+    if (!modelId || !industrySector) return;
     setProcessing(true);
     setError('');
     try {
@@ -356,6 +370,7 @@ export default function DiagnosisFormPage() {
           shift,
           jam_operasi: jamOperasi,
           answers: {
+            industry_sector: industrySector,
             fast_drain_duration: fastDrainDuration,
             charging_duration: chargingDuration,
             watering_frequency: wateringFrequency,
@@ -431,6 +446,7 @@ export default function DiagnosisFormPage() {
 
   function resetFlow() {
     setStep(1);
+    setIndustrySector('');
     setBrandId('');
     setModelId('');
     setSelectedIssues([]);
@@ -504,6 +520,7 @@ export default function DiagnosisFormPage() {
     ...(leadId ? [`Lead ID: ${leadId}`] : []),
     '',
     '*DATA UNIT*',
+    `Bidang industri: ${selectedIndustrySector}`,
     `Brand: ${selectedBrand?.name || '-'}`,
     `Model: ${selectedModel?.model_code || selectedModel?.name || '-'}`,
     `Kategori: ${selectedModel?.category || '-'}`,
@@ -608,14 +625,21 @@ export default function DiagnosisFormPage() {
       <Progress step={step} />
       <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
         {step === 1 && (
-          <StepFrame eyebrow="STEP 1 / 9 — MODEL SELECTION" title="Pilih Model Forklift">
+          <StepFrame eyebrow="STEP 1 / 9 — INDUSTRY & MODEL SELECTION" title="Pilih Bidang Industri & Model Forklift">
             <div className="grid gap-5 lg:grid-cols-[.85fr_1.15fr]">
               <Panel>
-                <Label>Brand</Label>
-                <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className="drr-input">
-                  <option value="">Pilih brand</option>
-                  {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+                <Label>Bidang Industri</Label>
+                <select value={industrySector} onChange={(e) => setIndustrySector(e.target.value as IndustrySector | '')} className="drr-input">
+                  <option value="">Pilih bidang industri</option>
+                  {industrySectors.map((sector) => <option key={sector.value} value={sector.value}>{sector.label}</option>)}
                 </select>
+                <div className="mt-6">
+                  <Label>Brand</Label>
+                  <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className="drr-input">
+                    <option value="">Pilih brand</option>
+                    {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+                  </select>
+                </div>
                 <div className="mt-6">
                   <Label>Model Forklift</Label>
                   <select value={modelId} onChange={(e) => setModelId(e.target.value)} disabled={!brandId || loadingModels} className="drr-input disabled:bg-zinc-100">
@@ -625,10 +649,11 @@ export default function DiagnosisFormPage() {
                 </div>
               </Panel>
               <div className="rounded-[24px] bg-[#0A0A0A] p-7 text-white">
-                <Mono>DRRKOBE MODEL CONTEXT</Mono>
+                <Mono>DRRKOBE OPERATION CONTEXT</Mono>
                 <h2 className="mt-5 text-3xl font-black tracking-tight">{selectedModel?.model_code || selectedModel?.name || 'Pilih model forklift'}</h2>
                 <p className="mt-2 text-sm text-zinc-400">{selectedBrand?.name || 'Data model akan tampil setelah dipilih'}</p>
-                <div className="mt-8 grid grid-cols-2 gap-3">
+                <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.06] p-4 text-xs leading-5 text-zinc-300"><b className="text-white">Bidang industri:</b> {selectedIndustrySector}</div>
+                <div className="mt-5 grid grid-cols-2 gap-3">
                   <Metric label="Category" value={selectedModel?.category || '-'} dark />
                   <Metric label="Capacity" value={selectedModel?.capacity_kg ? `${selectedModel.capacity_kg} kg` : '-'} dark />
                   <Metric label="Voltage" value={selectedModel?.battery_voltage ? `${selectedModel.battery_voltage} V` : '-'} dark />
