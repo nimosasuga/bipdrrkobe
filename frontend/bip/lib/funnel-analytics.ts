@@ -3,9 +3,11 @@
 const API_BASE = 'https://api.drrkobe.com/api/v1';
 const SESSION_KEY = 'drrkobe_bip_funnel_session';
 const SENT_KEY = 'drrkobe_bip_funnel_sent';
+const ATTRIBUTION_KEY = 'drrkobe_bip_ads_attribution';
 const inFlightEvents = new Set<string>();
 
 export type FunnelEventName =
+  | 'bip_visited'
   | 'diagnosis_started'
   | 'model_selected'
   | 'diagnosis_completed'
@@ -22,8 +24,56 @@ export type FunnelEventPayload = {
   metadata?: Record<string, unknown>;
 };
 
+type AdsAttribution = {
+  utm_source: string;
+  utm_campaign: string;
+  utm_content: string;
+};
+
 function canUseBrowserStorage(): boolean {
   return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+export function captureAdsAttribution(): AdsAttribution {
+  const direct: AdsAttribution = {
+    utm_source: 'direct',
+    utm_campaign: 'direct',
+    utm_content: '',
+  };
+
+  if (!canUseBrowserStorage()) return direct;
+
+  const params = new URLSearchParams(window.location.search);
+  const source = (params.get('utm_source') || '').trim().slice(0, 100);
+  const campaign = (params.get('utm_campaign') || '').trim().slice(0, 150);
+  const content = (params.get('utm_content') || '').trim().slice(0, 150);
+
+  if (source || campaign || content) {
+    const attribution: AdsAttribution = {
+      utm_source: source || 'unknown',
+      utm_campaign: campaign || 'unknown',
+      utm_content: content,
+    };
+
+    window.sessionStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(attribution));
+    return attribution;
+  }
+
+  try {
+    const stored = JSON.parse(window.sessionStorage.getItem(ATTRIBUTION_KEY) || 'null');
+    if (stored && typeof stored === 'object' && typeof stored.utm_source === 'string') {
+      return {
+        utm_source: stored.utm_source || 'direct',
+        utm_campaign: typeof stored.utm_campaign === 'string' ? stored.utm_campaign : 'direct',
+        utm_content: typeof stored.utm_content === 'string' ? stored.utm_content : '',
+      };
+    }
+  } catch {
+    // Gunakan direct jika data attribution browser tidak valid.
+  }
+
+  window.sessionStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(direct));
+  return direct;
 }
 
 export function getFunnelSessionId(): string {
@@ -91,6 +141,7 @@ export async function trackFunnelEvent(
   inFlightEvents.add(storageKey);
 
   try {
+    const attribution = captureAdsAttribution();
     const response = await fetch(`${API_BASE}/events`, {
       method: 'POST',
       headers: {
@@ -105,7 +156,10 @@ export async function trackFunnelEvent(
         lead_id: payload.leadId ?? null,
         event,
         source: 'bip',
-        metadata: payload.metadata ?? null,
+        metadata: {
+          ...(payload.metadata ?? {}),
+          ...attribution,
+        },
       }),
     });
 
