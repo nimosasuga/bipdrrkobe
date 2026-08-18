@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 class FunnelEventController extends Controller
 {
     private const EVENTS = [
+        'bip_visited',
         'diagnosis_started',
         'model_selected',
         'diagnosis_completed',
