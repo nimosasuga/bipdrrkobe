@@ -1,0 +1,47 @@
+name: Run Step 6-8 Validation
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  run:
+    if: github.event.issue.title == 'run: validate-step6-8'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Execute validation patch
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/validate-step6-8.yml').read_text()
+          marker = "          python3 <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY", start)
+          block = workflow[start:end]
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
+          exec(compile(script, 'step6_8_patch.py', 'exec'))
+          PY
+
+      - name: Commit validated outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/bip/app/diagnosis/form/page.tsx frontend/bip/lib/generate-assessment-pdf.ts
+          git diff --cached --check
+          git commit -m "fix: ground step 6-8 outputs in reported data"
+          git push origin main
+
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Step 6-8 validation patch executed."
