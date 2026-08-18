@@ -25,6 +25,7 @@ class DiagnosisController extends Controller
             'jam_operasi' => ['required', 'integer', 'min:1', 'max:24'],
 
             'answers' => ['required', 'array'],
+            'answers.industry_sector' => ['required', 'in:food_beverage,pharma_medical_cosmetics,logistics_3pl_ecommerce,cold_storage,electronics_automotive,textile_office_paper,retail_wholesale'],
             'answers.cepat_habis' => ['sometimes', 'nullable', 'boolean'],
             'answers.charging_lama' => ['sometimes', 'nullable', 'boolean'],
             'answers.isi_air' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:7'],
