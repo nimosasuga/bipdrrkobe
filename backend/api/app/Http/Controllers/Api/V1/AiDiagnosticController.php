@@ -27,7 +27,7 @@ class AiDiagnosticController extends Controller
         return response()->json([
             'success' => true,
             'health_score' => $diagnosis->health_score,
-            'ai' => $service->statusPayload($diagnosis),
+            'ai' => $this->publicAiPayload($service->statusPayload($diagnosis)),
         ]);
     }
 
@@ -43,7 +43,7 @@ class AiDiagnosticController extends Controller
                 'success' => true,
                 'health_score' => $diagnosis->health_score,
                 'ai_status' => $diagnosis->ai_status,
-                'ai' => $result,
+                'ai' => $this->publicAiPayload($result),
             ]);
         } catch (Throwable $exception) {
             report($exception);
@@ -58,5 +58,29 @@ class AiDiagnosticController extends Controller
                 'message' => $status['message'],
             ], 202);
         }
+    }
+
+    private function publicAiPayload(array $payload): array
+    {
+        if (array_key_exists('urgency', $payload)) {
+            $payload['urgency'] = $this->normaliseUrgency($payload['urgency']);
+        }
+
+        return $payload;
+    }
+
+    private function normaliseUrgency(mixed $urgency): ?string
+    {
+        if (!is_string($urgency) || trim($urgency) === '') {
+            return null;
+        }
+
+        return match (strtolower(trim($urgency))) {
+            'critical', 'kritis' => 'Kritis',
+            'high', 'tinggi' => 'Tinggi',
+            'medium', 'sedang' => 'Sedang',
+            'low', 'rendah' => 'Rendah',
+            default => trim($urgency),
+        };
     }
 }
