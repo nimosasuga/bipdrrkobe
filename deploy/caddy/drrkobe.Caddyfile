@@ -1,3 +1,8 @@
+drrkobe.com {
+    encode zstd gzip
+    reverse_proxy drrkobe-landing-web:80
+}
+
 bip.drrkobe.com {
     encode zstd gzip
     reverse_proxy drrkobe-bip-web:3000
