@@ -2,7 +2,11 @@
 
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { resetFunnelSession, trackFunnelEvent } from '../lib/funnel-analytics';
+import {
+  captureAdsAttribution,
+  resetFunnelSession,
+  trackFunnelEvent,
+} from '../lib/funnel-analytics';
 
 const DIAGNOSIS_PATH = '/diagnosis/form';
 
@@ -10,12 +14,16 @@ export default function DiagnosisFunnelTracker() {
   const pathname = usePathname();
 
   useEffect(() => {
+    captureAdsAttribution();
+    void trackFunnelEvent('bip_visited', {
+      metadata: { path: pathname },
+    });
+
     if (pathname !== DIAGNOSIS_PATH) return;
 
     let currentDiagnosisId: string | null = null;
     let currentLeadId: string | null = null;
 
-    resetFunnelSession();
     void trackFunnelEvent('diagnosis_started', {
       metadata: { path: DIAGNOSIS_PATH },
     });
@@ -44,6 +52,9 @@ export default function DiagnosisFunnelTracker() {
         currentLeadId = null;
         resetFunnelSession();
         window.setTimeout(() => {
+          void trackFunnelEvent('bip_visited', {
+            metadata: { path: DIAGNOSIS_PATH, restarted: true },
+          });
           void trackFunnelEvent('diagnosis_started', {
             metadata: { path: DIAGNOSIS_PATH, restarted: true },
           });
