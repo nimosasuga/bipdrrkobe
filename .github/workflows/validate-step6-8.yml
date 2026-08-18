@@ -1,0 +1,197 @@
+name: Validate Step 6-8 Claims
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-step6-8.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Replace unsupported operational estimates
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def apply(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected block not found in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          page = 'frontend/bip/app/diagnosis/form/page.tsx'
+          pdf = 'frontend/bip/lib/generate-assessment-pdf.ts'
+
+          apply(page, """const comparisonRows = [
+  ['Charging Time', '8–12 jam + cooling', '1.5–2.5 jam, opportunity charge'],
+  ['Lifespan (cycles)', '~1,200 cycles', '~3,000+ cycles'],
+  ['Maintenance', 'Isi air, equalizing, cleaning', 'Minimal routine maintenance'],
+  ['Energy Efficiency', '75–80%', '95%+'],
+  ['Downtime Risk', 'Tinggi pada operasi multi-shift', 'Lebih rendah dengan opportunity charging'],
+  ['Opportunity Charging', 'Tidak direkomendasikan', 'Dapat dilakukan saat break'],
+  ['Safety / Emission', 'Gas H2, acid handling', 'Sealed, no watering'],
+];""", """const comparisonRows = [
+  ['Charging Window', 'Mengikuti siklus pengisian dan recovery sesuai spesifikasi battery/charger.', 'Dapat dievaluasi untuk pengisian saat jeda bila battery, charger, BMS, dan prosedur mendukung.'],
+  ['Service Life', 'Dipengaruhi duty cycle, depth of discharge, temperatur, charging, dan disiplin perawatan.', 'Dipengaruhi chemistry, BMS, duty cycle, temperatur, charging, dan batas operasi pabrikan.'],
+  ['Maintenance', 'Perlu pemeriksaan elektrolit/air, terminal, kebersihan, dan equalizing sesuai kebutuhan.', 'Tidak menggunakan watering; tetap perlu pemeriksaan BMS, konektor, charger, dan temperatur.'],
+  ['Energy', 'Konsumsi dan efisiensi harus dibuktikan dari charger serta pengukuran aktual di site.', 'Potensi efisiensi harus divalidasi dari spesifikasi teknis dan pengukuran aktual di site.'],
+  ['Downtime Risk', 'Dipengaruhi kondisi battery, charging window, rotasi battery, charger, dan pola kerja.', 'Dipengaruhi kapasitas, kompatibilitas, charging window, BMS, charger, dan pola kerja.'],
+  ['Opportunity Charging', 'Hanya dilakukan bila diizinkan oleh spesifikasi battery, charger, dan prosedur site.', 'Dapat menjadi opsi bila diizinkan oleh spesifikasi battery, charger, BMS, dan prosedur site.'],
+  ['Safety', 'Perlu pengendalian ventilasi, elektrolit/asam, gas saat charging, dan PPE sesuai prosedur site.', 'Perlu pengendalian BMS, temperatur, charger, konektor, dan prosedur keselamatan sesuai site.'],
+];""")
+
+          apply(page, """  const downtimeHours = Math.round(((umur * 1.5 + shift * 2) * 1.2) * 10) / 10;
+  const chargingWaste = chargingLama === true ? Math.max(0, (8 - 2) * 26) : 0;
+  const maintenanceYear = isiAir === null ? 0 : isiAir * 52 + 12;
+  const operationalHoursMonth = Math.max(1, jamOperasi * 26);
+  const productivityLoss = Math.min(100, Math.round((downtimeHours / operationalHoursMonth) * 100));
+  const roiDowntime = roiShift >= 3 ? 75 : roiShift >= 2 ? 70 : 65;
+  const operationalFit = roiJamOperasi >= 16 && roiShift >= 2 ? 'Tinggi' : 'Sedang';
+
+  const monthlyDowntimeCost = downtimeCostPerHour * downtimeHours * jumlahForklift;
+  const monthlyMaintenanceCost = maintenanceCostPerUnitMonth * jumlahForklift;
+  const monthlyChargingCost = chargingCostPerUnitMonth * jumlahForklift;
+  const annualOperatingExposure = (monthlyDowntimeCost + monthlyMaintenanceCost + monthlyChargingCost) * 12;
+  const annualSavingScenario = (
+    monthlyDowntimeCost * (roiDowntime / 100) +
+    monthlyMaintenanceCost * 0.9 +
+    monthlyChargingCost * 0.28
+  ) * 12;
+  const hasFinancialInputs = financialMode !== 'unknown' && annualOperatingExposure > 0;""", """  const downtimeObserved = optionLabel(downtimeOptions, downtimeFrequency);
+  const chargingObserved = optionLabel(chargingDurationOptions, chargingDuration);
+  const maintenanceObserved = optionLabel(wateringOptions, wateringFrequency);
+  const runtimeObserved = optionLabel(fastDrainOptions, fastDrainDuration);
+  const operationalDemand = roiShift >= 3 || roiJamOperasi >= 20 ? 'Tinggi' : roiShift >= 2 || roiJamOperasi >= 16 ? 'Menengah' : 'Normal';
+  const chargingWindowStatus = roiShift >= 2 && roiJamOperasi >= 16 ? 'Ketat' : 'Lebih longgar';
+  const validationStatus = 'Perlu data site';
+
+  // Tidak menghitung jam downtime, productivity loss, saving, atau ROI dari asumsi tersembunyi.
+  // Nilai finansial baru layak dihitung setelah durasi downtime aktual dan baseline biaya tervalidasi.
+  const annualOperatingExposure = 0;
+  const annualSavingScenario = 0;
+  const hasFinancialInputs = false;""")
+
+          apply(page, """    '*SIMULASI OPERASIONAL*',
+    `Jumlah forklift: ${jumlahForklift} unit`,
+    `Jam operasi: ${roiJamOperasi} jam/hari`,
+    `Shift: ${roiShift} shift`,
+    `Potensi pengurangan downtime: ${roiDowntime}%`,
+    'Potensi peningkatan efisiensi energi: 28%',
+    'Potensi pengurangan aktivitas maintenance: 90%',
+    `Kesesuaian operasional: ${operationalFit}`,
+    ...(hasFinancialInputs
+      ? ['', '*DATA BIAYA YANG TERSEDIA*', `Biaya downtime: ${formatRupiah(downtimeCostPerHour)} / jam`, ...(financialMode === 'full' ? [`Maintenance Lead Acid: ${formatRupiah(maintenanceCostPerUnitMonth)} / unit / bulan`, `Charging/listrik: ${formatRupiah(chargingCostPerUnitMonth)} / unit / bulan`] : []), `Estimasi annual operating exposure: ${formatRupiah(annualOperatingExposure)}`, `Scenario annual saving potential: ${formatRupiah(annualSavingScenario)} / tahun`]
+      : ['', '*STATUS FINANSIAL*', 'Menunggu validasi data biaya perusahaan. Dampak operasional tetap dihitung tanpa membuat asumsi nominal biaya.']),""", """    '*EVALUASI OPERASIONAL*',
+    `Jumlah forklift: ${jumlahForklift} unit`,
+    `Jam operasi: ${roiJamOperasi} jam/hari`,
+    `Shift: ${roiShift} shift`,
+    `Kebutuhan operasional: ${operationalDemand}`,
+    `Charging window: ${chargingWindowStatus}`,
+    `Frekuensi downtime yang dilaporkan: ${downtimeObserved}`,
+    `Durasi charging yang dilaporkan: ${chargingObserved}`,
+    'Potensi efisiensi, pengurangan downtime, dan ROI: perlu validasi data site.',
+    '',
+    '*STATUS FINANSIAL*',
+    'Menunggu durasi downtime aktual, baseline biaya, dan data konsumsi/maintenance yang tervalidasi. Tidak ada saving atau ROI otomatis dari asumsi umum.',""")
+
+          apply(page, """      downtimeHoursPerMonth: downtimeHours,
+      chargingExposureHoursPerMonth: chargingWaste,
+      maintenanceActionsPerYear: maintenanceYear,
+      productivityLossPercent: productivityLoss,
+      fleetSize: jumlahForklift,
+      simulationHoursPerDay: roiJamOperasi,
+      simulationShift: roiShift,
+      downtimeReductionPercent: roiDowntime,
+      energyEfficiencyPercent: 28,
+      maintenanceReductionPercent: 90,
+      operationalFit,""", """      downtimeHoursPerMonth: 0,
+      chargingExposureHoursPerMonth: 0,
+      maintenanceActionsPerYear: 0,
+      productivityLossPercent: 0,
+      fleetSize: jumlahForklift,
+      simulationHoursPerDay: roiJamOperasi,
+      simulationShift: roiShift,
+      downtimeReductionPercent: 0,
+      energyEfficiencyPercent: 0,
+      maintenanceReductionPercent: 0,
+      operationalFit: operationalDemand,""")
+
+          apply(page, """            <div className=\"mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4\"><MetricCard label=\"Downtime\" value={`${downtimeHours} jam/bulan`} sub=\"Perkiraan waktu berhenti tidak terencana\" /><MetricCard label=\"Charging Exposure\" value={chargingDuration === 'unknown' ? 'Belum diketahui' : `${chargingWaste} jam/bulan`} sub=\"Waktu pengisian yang menyerap jam operasi\" /><MetricCard label=\"Maintenance\" value={wateringFrequency === 'unknown' ? 'Belum diketahui' : `${maintenanceYear} tindakan/tahun`} sub=\"Isi air dan pemeriksaan rutin\" /><MetricCard label=\"Productivity\" value={`-${productivityLoss}%`} sub=\"Terhadap jam operasional tersedia\" /></div>
+            <Panel className=\"mt-6\"><div className=\"font-black\">Kontribusi tiap masalah terhadap kondisi operasional</div><div className=\"mt-6 space-y-5\">{selectedIssueLabels.slice(0, 5).map((label, index) => { const width = Math.max(25, 78 - index * 9); return <div key={label}><div className=\"mb-2 flex justify-between text-xs text-zinc-600\"><span>{label}</span><span>{width}% bobot indikasi</span></div><div className=\"h-3 overflow-hidden rounded-full bg-zinc-100\"><div className=\"h-full bg-[#0A0A0A]\" style={{ width: `${width}%` }} /></div></div>; })}</div><p className=\"mt-6 text-xs leading-5 text-zinc-500\">Angka di atas adalah indikator operasional berdasarkan data yang diisi. Tidak ada harga atau nominal biaya yang ditampilkan.</p></Panel>""", """            <div className=\"mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4\"><MetricCard label=\"Downtime\" value={downtimeObserved} sub=\"Frekuensi yang dilaporkan user\" /><MetricCard label=\"Charging\" value={chargingObserved} sub=\"Durasi yang dilaporkan user\" /><MetricCard label=\"Maintenance\" value={maintenanceObserved} sub=\"Pemeriksaan / isi air yang dilaporkan\" /><MetricCard label=\"Runtime Battery\" value={runtimeObserved} sub=\"Durasi kerja yang dilaporkan\" /></div>
+            <Panel className=\"mt-6\"><div className=\"font-black\">Sinyal dampak operasional yang perlu diverifikasi</div><div className=\"mt-5 grid gap-3 sm:grid-cols-2\"><Metric label=\"Gejala dilaporkan\" value={`${selectedIssues.length} masalah`} /><Metric label=\"Kebutuhan operasi saat diagnosis\" value={`${shift} shift / ${jamOperasi} jam`} /><Metric label=\"Downtime\" value={downtimeObserved} /><Metric label=\"Charging\" value={chargingObserved} /></div><p className=\"mt-6 text-xs leading-5 text-zinc-500\">DRRKOBE tidak mengubah frekuensi kejadian menjadi jam downtime atau persentase productivity loss tanpa durasi kejadian aktual. Angka finansial baru dihitung setelah data site tervalidasi.</p></Panel>""")
+
+          apply(page, """            <div className=\"mt-4 rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-xs leading-5 text-zinc-600\"><b className=\"text-black\">Tidak ada harga yang ditampilkan.</b> Perbandingan ini digunakan sebagai bahan evaluasi teknis dan operasional.</div>""", """            <div className=\"mt-4 rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-xs leading-5 text-zinc-600\"><b className=\"text-black\">Perbandingan bersifat kualitatif.</b> Nilai cycle life, charging time, efisiensi energi, temperatur, kompatibilitas, dan keselamatan harus diverifikasi terhadap datasheet battery/charger serta kondisi site. Tidak ada harga yang ditampilkan.</div>""")
+
+          apply(page, """          <StepFrame eyebrow=\"STEP 8 / 9 — ROI SIMULATOR\" title={`Hitung Potensi Efisiensi — ${selectedIssues.length} Masalah`}>
+            <div className=\"grid gap-6 lg:grid-cols-[.9fr_1.35fr]\">
+              <Panel><Range label={`Jumlah Forklift: ${jumlahForklift}`} value={jumlahForklift} min={1} max={20} onChange={setJumlahForklift} /><div className=\"mt-7\"><Range label={`Jam Operasi / Hari: ${roiJamOperasi}h`} value={roiJamOperasi} min={8} max={24} onChange={setRoiJamOperasi} /></div><div className=\"mt-7\"><Choice label=\"Shift\" value={roiShift} values={[1, 2, 3]} onChange={setRoiShift} suffix=\" Shift\" /></div><div className=\"mt-7 rounded-xl bg-[#FFFEF0] p-4 text-xs leading-5\"><b>Catatan:</b> simulasi persentase adalah indikator awal. Nilai aktual harus diverifikasi berdasarkan duty cycle dan kondisi site.</div></Panel>
+              <div className=\"rounded-[24px] bg-[#0A0A0A] p-7 text-white\"><Mono className=\"text-zinc-400\">SIMULASI • {jumlahForklift} unit • {roiJamOperasi} jam • {roiShift} shift</Mono><div className=\"mt-7 grid gap-4 sm:grid-cols-2\"><DarkResult label=\"Downtime\" value={`-${roiDowntime}%`} sub=\"Potensi pengurangan downtime\" /><DarkResult label=\"Energy\" value=\"+28%\" sub=\"Potensi peningkatan efisiensi energi\" /><DarkResult label=\"Maintenance\" value=\"-90%\" sub=\"Potensi pengurangan watering & equalizing\" /><DarkResult label=\"Operational Fit\" value={operationalFit} sub=\"Berdasarkan shift dan jam operasi\" /></div><div className=\"mt-6 rounded-[16px] bg-[#FFCC00] p-5 text-black\"><b>Potensi operasional:</b> semakin tinggi jam operasi, jumlah unit, dan shift, semakin besar kebutuhan menjaga availability battery dan charging window.</div></div>
+            </div>""", """          <StepFrame eyebrow=\"STEP 8 / 9 — OPERATIONAL READINESS\" title={`Validasi Kebutuhan Operasional — ${selectedIssues.length} Masalah`}>
+            <div className=\"grid gap-6 lg:grid-cols-[.9fr_1.35fr]\">
+              <Panel><Range label={`Jumlah Forklift: ${jumlahForklift}`} value={jumlahForklift} min={1} max={20} onChange={setJumlahForklift} /><div className=\"mt-7\"><Range label={`Jam Operasi / Hari: ${roiJamOperasi}h`} value={roiJamOperasi} min={8} max={24} onChange={setRoiJamOperasi} /></div><div className=\"mt-7\"><Choice label=\"Shift\" value={roiShift} values={[1, 2, 3]} onChange={setRoiShift} suffix=\" Shift\" /></div><div className=\"mt-7 rounded-xl bg-[#FFFEF0] p-4 text-xs leading-5\"><b>Catatan:</b> tahap ini membaca intensitas kebutuhan operasi. DRRKOBE tidak menghasilkan persentase saving, downtime reduction, atau ROI sebelum baseline site tersedia.</div></Panel>
+              <div className=\"rounded-[24px] bg-[#0A0A0A] p-7 text-white\"><Mono className=\"text-zinc-400\">OPERATIONAL READINESS • {jumlahForklift} unit • {roiJamOperasi} jam • {roiShift} shift</Mono><div className=\"mt-7 grid gap-4 sm:grid-cols-2\"><DarkResult label=\"Operational Demand\" value={operationalDemand} sub=\"Berdasarkan shift dan jam operasi\" /><DarkResult label=\"Charging Window\" value={chargingWindowStatus} sub=\"Indikator kebutuhan waktu pengisian\" /><DarkResult label=\"Maintenance\" value={maintenanceObserved} sub=\"Frekuensi yang dilaporkan user\" /><DarkResult label=\"Validation\" value={validationStatus} sub=\"Butuh baseline dan pemeriksaan site\" /></div><div className=\"mt-6 rounded-[16px] bg-[#FFCC00] p-5 text-black\"><b>Dasar keputusan:</b> jumlah unit, jam operasi, shift, charging window, downtime aktual, kondisi battery, dan kompatibilitas charger perlu dibaca bersama sebelum membahas potensi efisiensi atau investasi.</div></div>
+            </div>""")
+
+          apply(page, """              <p className=\"mt-2 max-w-3xl text-sm leading-6 text-zinc-600\">Tidak mengetahui biaya internal tidak menghambat diagnosis. Laporan tetap menampilkan downtime, charging exposure, maintenance, dan productivity loss tanpa membuat asumsi nominal biaya.</p>""", """              <p className=\"mt-2 max-w-3xl text-sm leading-6 text-zinc-600\">Tidak mengetahui biaya internal tidak menghambat diagnosis. Nilai Rupiah, saving, dan ROI tidak dihitung otomatis sampai durasi downtime, baseline biaya, konsumsi, serta biaya maintenance benar-benar tersedia.</p>""")
+
+          apply(page, """                  <div className=\"mt-4 grid grid-cols-2 gap-3 text-sm\"><KeyValue label=\"Downtime\" value={`${downtimeHours} jam/bulan`} /><KeyValue label=\"Charging\" value={chargingDuration === 'unknown' ? 'Belum diketahui' : `${chargingWaste} jam/bulan`} /><KeyValue label=\"Maintenance\" value={wateringFrequency === 'unknown' ? 'Belum diketahui' : `${maintenanceYear} tindakan/tahun`} /><KeyValue label=\"Productivity\" value={`-${productivityLoss}%`} /></div>""", """                  <div className=\"mt-4 grid grid-cols-2 gap-3 text-sm\"><KeyValue label=\"Downtime\" value={downtimeObserved} /><KeyValue label=\"Charging\" value={chargingObserved} /><KeyValue label=\"Maintenance\" value={maintenanceObserved} /><KeyValue label=\"Runtime Battery\" value={runtimeObserved} /></div>""")
+
+          apply(page, """                  <div className=\"mt-3 text-2xl font-black\">{hasFinancialInputs ? formatRupiah(annualOperatingExposure) : 'Pending Cost Validation'}</div>
+                  <p className=\"mt-2 text-xs leading-5 text-zinc-400\">{hasFinancialInputs ? `Estimasi annual operating exposure berdasarkan data yang Anda masukkan. Scenario saving: ${formatRupiah(annualSavingScenario)} / tahun.` : financialMode === 'unknown' ? 'Nilai finansial menunggu data cost internal perusahaan. Executive Report tetap dapat dibuat dengan dampak operasional yang sudah terukur.' : 'Masukkan biaya downtime bila tersedia. Jika tidak, pilih “Saya tidak tahu biaya internal” dan lanjutkan tanpa nominal.'}</p>""", """                  <div className=\"mt-3 text-2xl font-black\">Pending Site Validation</div>
+                  <p className=\"mt-2 text-xs leading-5 text-zinc-400\">{financialMode === 'unknown' ? 'Nilai finansial menunggu baseline biaya dan data operasi aktual.' : 'Data biaya yang Anda isi disimpan sebagai referensi awal. Perhitungan Rupiah, saving, dan ROI tetap menunggu durasi downtime serta baseline site yang tervalidasi.'}</p>""")
+
+          apply(pdf, """  const monetaryInputsAvailable = annualOperatingCost > 0;""", """  const monetaryInputsAvailable = annualOperatingCost > 0 && data.downtimeHoursPerMonth > 0 && data.downtimeReductionPercent > 0;""")
+
+          apply(pdf, """  metricCard(doc, MARGIN, y, 40, 'Waktu henti', downtimeKnown ? `${data.downtimeHoursPerMonth} jam/bln` : 'Belum diketahui', downtimeKnown ? 'Perkiraan unit tidak produktif' : 'Perlu data frekuensi waktu henti');
+  metricCard(doc, MARGIN + 45, y, 40, 'Pengisian daya', chargingKnown ? `${data.chargingExposureHoursPerMonth} jam/bln` : 'Belum diketahui', chargingKnown ? 'Waktu terserap untuk pengisian' : 'Perlu data durasi pengisian');
+  metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', wateringKnown ? `${data.maintenanceActionsPerYear}x/thn` : 'Belum diketahui', wateringKnown ? 'Isi air dan pemeriksaan rutin' : 'Perlu data isi air battery');
+  metricCard(doc, MARGIN + 135, y, 39, 'Produktivitas', downtimeKnown ? `-${data.productivityLossPercent}%` : 'Belum diketahui', downtimeKnown ? 'Terhadap jam operasi tersedia' : 'Menunggu data waktu henti');""", """  metricCard(doc, MARGIN, y, 40, 'Waktu henti', downtimeKnown ? detailOrFallback(data.downtimeFrequencyDetail, '-') : 'Belum diketahui', downtimeKnown ? 'Frekuensi yang dilaporkan' : 'Perlu data frekuensi waktu henti');
+  metricCard(doc, MARGIN + 45, y, 40, 'Pengisian daya', chargingKnown ? detailOrFallback(data.chargingDurationDetail, '-') : 'Belum diketahui', chargingKnown ? 'Durasi yang dilaporkan' : 'Perlu data durasi pengisian');
+  metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', wateringKnown ? detailOrFallback(data.wateringFrequencyDetail, '-') : 'Belum diketahui', wateringKnown ? 'Pemeriksaan / isi air' : 'Perlu data isi air battery');
+  metricCard(doc, MARGIN + 135, y, 39, 'Runtime battery', detailOrFallback(data.fastDrainDetail, 'Belum diketahui'), 'Durasi yang dilaporkan');""")
+
+          apply(pdf, """  const rows = [
+    ['Waktu pengisian', '8-12 jam, kemudian masa pendinginan', 'Sekitar 1,5-2,5 jam; dapat diisi saat jeda operasi'],
+    ['Umur siklus', 'Sekitar 1.200 siklus', 'Sekitar 3.000+ siklus'],
+    ['Perawatan rutin', 'Isi air, equalizing, dan pembersihan', 'Tidak memerlukan isi air atau equalizing rutin'],
+    ['Efisiensi energi', 'Sekitar 75-80%', 'Dapat mencapai sekitar 95%+'],
+    ['Operasi multi-shift', 'Membutuhkan waktu pengisian dan rotasi battery', 'Lebih fleksibel untuk pengisian saat jeda'],
+    ['Aspek keselamatan', 'Perlu penanganan asam dan ventilasi gas', 'Tanpa isi air; tetap perlu pengawasan Battery Management System (BMS)'],
+  ];""", """  const rows = [
+    ['Charging window', 'Mengikuti siklus pengisian dan recovery sesuai spesifikasi battery/charger', 'Pengisian saat jeda dapat dievaluasi bila battery, charger, BMS, dan prosedur mendukung'],
+    ['Service life', 'Dipengaruhi duty cycle, depth of discharge, temperatur, charging, dan perawatan', 'Dipengaruhi chemistry, BMS, duty cycle, temperatur, charging, dan batas operasi pabrikan'],
+    ['Perawatan rutin', 'Pemeriksaan elektrolit/air, terminal, kebersihan, dan equalizing sesuai kebutuhan', 'Tanpa watering; tetap perlu pemeriksaan BMS, konektor, charger, dan temperatur'],
+    ['Energi', 'Efisiensi harus dibuktikan dari charger serta pengukuran aktual di site', 'Potensi efisiensi harus divalidasi dari spesifikasi teknis dan pengukuran aktual di site'],
+    ['Operasi multi-shift', 'Dipengaruhi kondisi battery, charging window, rotasi battery, charger, dan pola kerja', 'Dipengaruhi kapasitas, kompatibilitas, charging window, BMS, charger, dan pola kerja'],
+    ['Aspek keselamatan', 'Ventilasi, elektrolit/asam, gas charging, dan PPE mengikuti prosedur site', 'BMS, temperatur, charger, konektor, dan prosedur keselamatan mengikuti spesifikasi/site'],
+  ];""")
+
+          apply(pdf, """  metricCard(doc, MARGIN, y, 40, 'Waktu henti', `-${data.downtimeReductionPercent}%`, 'Potensi pengurangan');
+  metricCard(doc, MARGIN + 45, y, 40, 'Efisiensi energi', `+${data.energyEfficiencyPercent}%`, 'Potensi peningkatan');
+  metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', `-${data.maintenanceReductionPercent}%`, 'Potensi pengurangan pekerjaan rutin');
+  metricCard(doc, MARGIN + 135, y, 39, 'Kesesuaian', cleanClientText(data.operationalFit) || '-', 'Terhadap shift & jam operasi');""", """  metricCard(doc, MARGIN, y, 40, 'Waktu henti', 'Perlu validasi', 'Butuh durasi kejadian aktual');
+  metricCard(doc, MARGIN + 45, y, 40, 'Efisiensi energi', 'Perlu validasi', 'Butuh data charger dan konsumsi');
+  metricCard(doc, MARGIN + 90, y, 40, 'Perawatan', 'Perlu validasi', 'Butuh baseline aktivitas aktual');
+  metricCard(doc, MARGIN + 135, y, 39, 'Kebutuhan operasi', cleanClientText(data.operationalFit) || '-', 'Berdasarkan shift & jam operasi');""")
+
+          apply(pdf, """  y = sectionTitle(doc, '06 / Potensi perbaikan', 'Apa yang mungkin diperoleh bila pola operasi diperbaiki?', 'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data operasi dan pemeriksaan lapangan.');""", """  y = sectionTitle(doc, '06 / Validasi kebutuhan operasi', 'Data apa yang dibutuhkan sebelum menghitung manfaat?', 'DRRKOBE tidak menghitung saving, pengurangan downtime, atau ROI otomatis tanpa baseline operasi dan data site yang dapat diverifikasi.');""")
+
+          PY
+
+      - name: Commit validated Step 6-8
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/bip/app/diagnosis/form/page.tsx frontend/bip/lib/generate-assessment-pdf.ts
+          git diff --cached --check
+          git commit -m "fix: ground step 6-8 outputs in reported data"
+          git push
