@@ -6,7 +6,12 @@
   <title>DRRKOBE — Battery Intelligence Platform</title>
   <meta name="description" content="Assessment kondisi battery forklift untuk membantu mengidentifikasi risiko downtime dan langkah pemeriksaan berikutnya.">
   <style>
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f7f7f3;color:#0a0a0a;font-family:Inter,Arial,sans-serif}.wrap{max-width:1120px;margin:auto;padding:0 22px}.nav{display:flex;justify-content:space-between;align-items:center;padding:22px 0}.brand{font-size:24px;font-weight:900;letter-spacing:-.04em}.badge{margin-left:8px;background:#ffcc00;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.nav-link{color:#0a0a0a;font-size:12px;font-weight:800;text-decoration:none}.hero{padding:76px 0 62px;display:grid;grid-template-columns:1.25fr .75fr;gap:44px;align-items:center}.eyebrow{font:800 11px/1.5 monospace;letter-spacing:.12em;color:#71717a}.hero h1{margin:12px 0 18px;font-size:62px;line-height:.98;letter-spacing:-.055em}.lead{max-width:720px;color:#52525b;font-size:18px;line-height:1.7}.cta-row{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap}.cta{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#0a0a0a;color:#fff;padding:14px 20px;font-size:13px;font-weight:900;text-decoration:none}.cta.yellow{background:#ffcc00;color:#000}.panel{background:#0a0a0a;color:#fff;border-radius:28px;padding:28px}.panel-label{font:800 10px/1.5 monospace;letter-spacing:.12em;color:#ffcc00}.panel h2{margin:10px 0 18px;font-size:28px;line-height:1.15}.checks{display:grid;gap:12px}.check{border-top:1px solid #27272a;padding-top:12px;color:#d4d4d8;font-size:13px;line-height:1.55}.section{padding:58px 0;border-top:1px solid #deded8}.section h2{margin:0 0 22px;font-size:34px;letter-spacing:-.035em}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:#fff;border:1px solid #e4e4e7;border-radius:20px;padding:22px}.card strong{font-size:17px}.card p{margin:9px 0 0;color:#71717a;font-size:13px;line-height:1.65}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.flow-card{background:#fff;border:1px solid #e4e4e7;border-radius:18px;padding:20px}.flow-no{font:900 10px/1.4 monospace;color:#a1a1aa}.flow-title{margin-top:8px;font-size:16px;font-weight:900}.flow-text{margin-top:7px;color:#71717a;font-size:12px;line-height:1.55}.bottom{padding:64px 0 76px}.bottom-box{background:#ffcc00;border-radius:28px;padding:34px;display:flex;justify-content:space-between;align-items:center;gap:28px}.bottom h2{margin:0;font-size:34px;letter-spacing:-.035em}.bottom p{margin:8px 0 0;color:#3f3f46;font-size:13px}.footer{border-top:1px solid #deded8;padding:24px 0 32px;color:#71717a;font-size:11px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}@media(max-width:860px){.hero{grid-template-columns:1fr}.hero h1{font-size:48px}.grid{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.bottom-box{align-items:flex-start;flex-direction:column}}@media(max-width:560px){.hero{padding-top:48px}.hero h1{font-size:40px}.lead{font-size:16px}.flow{grid-template-columns:1fr}.bottom h2{font-size:28px}.cta{width:100%}}
+    :root{--black:#0a0a0a;--yellow:#ffcc00;--paper:#f7f7f3;--line:#deded8;--muted:#71717a;--white:#fff}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--black);font-family:Inter,Arial,sans-serif;overflow-x:hidden}.wrap{max-width:1180px;margin:auto;padding:0 22px}.nav{display:flex;justify-content:space-between;align-items:center;padding:22px 0}.brand{font-size:24px;font-weight:900;letter-spacing:-.04em}.badge{margin-left:8px;background:var(--yellow);border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.nav-link{color:var(--black);font-size:12px;font-weight:900;text-decoration:none}.hero{padding:58px 0 72px;display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center}.eyebrow{font:800 11px/1.5 monospace;letter-spacing:.12em;color:var(--muted)}.hero h1{margin:12px 0 18px;font-size:62px;line-height:.98;letter-spacing:-.055em}.lead{max-width:680px;color:#52525b;font-size:18px;line-height:1.7}.cta-row{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap}.cta{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--black);color:#fff;padding:14px 20px;font-size:13px;font-weight:900;text-decoration:none}.cta.yellow{background:var(--yellow);color:#000}.micro{margin-top:16px;color:#71717a;font-size:11px}.motion-stage{position:relative;min-height:420px;border-radius:32px;background:#0a0a0a;overflow:hidden;padding:24px}.motion-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask-image:linear-gradient(to bottom,black,transparent)}.motion-orbit{position:absolute;width:280px;height:280px;border:1px solid rgba(255,204,0,.28);border-radius:50%;right:-36px;top:-26px;animation:spin 18s linear infinite}.motion-orbit:after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--yellow);top:38px;left:46px;box-shadow:0 0 28px rgba(255,204,0,.65)}.forklift-scene{position:absolute;left:26px;right:26px;bottom:34px;height:232px}.forklift-svg{width:100%;height:100%;filter:drop-shadow(0 20px 30px rgba(0,0,0,.35));animation:floatFork 5s ease-in-out infinite}.battery-float{position:absolute;right:26px;top:30px;width:150px;background:#fff;border-radius:18px;padding:14px 16px;color:#0a0a0a;box-shadow:0 18px 45px rgba(0,0,0,.22);animation:floatBattery 4s ease-in-out infinite}.battery-head{display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:900;letter-spacing:.08em}.battery-icon{margin-top:10px;height:54px;border:3px solid #0a0a0a;border-radius:8px;position:relative;padding:5px}.battery-icon:after{content:"";position:absolute;right:-8px;top:17px;width:6px;height:18px;background:#0a0a0a;border-radius:0 3px 3px 0}.battery-level{height:100%;width:78%;border-radius:3px;background:var(--yellow);animation:pulseLevel 2.8s ease-in-out infinite}.stage-copy{position:absolute;top:34px;left:26px;color:#fff;max-width:210px}.stage-copy strong{display:block;font-size:22px;line-height:1.05;letter-spacing:-.035em}.stage-copy span{display:block;margin-top:8px;color:#a1a1aa;font-size:11px;line-height:1.5}.section{padding:64px 0;border-top:1px solid var(--line)}.section-head{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:24px}.section h2{margin:0;font-size:36px;letter-spacing:-.04em}.section-lead{max-width:540px;margin:0;color:#71717a;font-size:13px;line-height:1.65}.brand-wall{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.brand-chip{background:#fff;border:1px solid #e4e4e7;border-radius:16px;padding:17px 12px;text-align:center;font-size:13px;font-weight:900;letter-spacing:.01em;transition:transform .2s ease,border-color .2s ease}.brand-chip:hover{transform:translateY(-3px);border-color:#0a0a0a}.equipment-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.equipment-card{background:#fff;border:1px solid #e4e4e7;border-radius:24px;overflow:hidden}.equipment-visual{height:210px;background:#111;position:relative;display:grid;place-items:center;overflow:hidden}.equipment-visual:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 70% 20%,rgba(255,204,0,.16),transparent 40%),linear-gradient(to top,rgba(255,255,255,.04),transparent)}.equipment-svg{position:relative;width:86%;height:80%;animation:equipmentFloat 5.5s ease-in-out infinite}.equipment-card:nth-child(2) .equipment-svg{animation-delay:-1.4s}.equipment-card:nth-child(3) .equipment-svg{animation-delay:-2.7s}.equipment-copy{padding:20px}.equipment-title{font-size:18px;font-weight:900}.equipment-text{margin-top:8px;color:#71717a;font-size:12px;line-height:1.65}.battery-section{display:grid;grid-template-columns:.9fr 1.1fr;gap:20px;align-items:stretch}.battery-panel{background:var(--yellow);border-radius:28px;padding:28px;min-height:300px}.battery-panel h3{margin:0;font-size:32px;letter-spacing:-.04em}.battery-panel p{max-width:520px;color:#3f3f46;font-size:13px;line-height:1.7}.battery-art{position:relative;background:#0a0a0a;border-radius:28px;min-height:300px;overflow:hidden;display:grid;place-items:center}.battery-art svg{width:82%;max-width:520px;height:auto;animation:batteryPack 5s ease-in-out infinite}.battery-scan{position:absolute;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,#ffcc00,transparent);top:20%;box-shadow:0 0 18px #ffcc00;animation:scan 3.8s ease-in-out infinite}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.flow-card{background:#fff;border:1px solid #e4e4e7;border-radius:18px;padding:20px}.flow-no{font:900 10px/1.4 monospace;color:#a1a1aa}.flow-title{margin-top:8px;font-size:16px;font-weight:900}.flow-text{margin-top:7px;color:#71717a;font-size:12px;line-height:1.55}.bottom{padding:64px 0 76px}.bottom-box{background:var(--yellow);border-radius:28px;padding:34px;display:flex;justify-content:space-between;align-items:center;gap:28px}.bottom h2{margin:0;font-size:34px;letter-spacing:-.035em}.bottom p{margin:8px 0 0;color:#3f3f46;font-size:13px}.footer{border-top:1px solid var(--line);padding:24px 0 32px;color:#71717a;font-size:11px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    @keyframes floatFork{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(8px,-9px,0)}}@keyframes floatBattery{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(10px) rotate(1deg)}}@keyframes pulseLevel{0%,100%{width:72%;opacity:.85}50%{width:88%;opacity:1}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes equipmentFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}@keyframes batteryPack{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-8px) scale(1.015)}}@keyframes scan{0%,100%{top:18%;opacity:.25}50%{top:78%;opacity:1}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}.motion-orbit,.forklift-svg,.battery-float,.battery-level,.equipment-svg,.battery-art svg,.battery-scan{animation:none!important}}
+    @media(max-width:900px){.hero{grid-template-columns:1fr}.hero h1{font-size:50px}.motion-stage{min-height:380px}.brand-wall{grid-template-columns:repeat(2,1fr)}.equipment-grid{grid-template-columns:1fr}.battery-section{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.bottom-box{align-items:flex-start;flex-direction:column}}
+    @media(max-width:560px){.hero{padding-top:40px}.hero h1{font-size:40px}.lead{font-size:16px}.motion-stage{min-height:340px}.battery-float{width:125px}.section-head{align-items:flex-start;flex-direction:column}.section h2{font-size:30px}.brand-wall{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.bottom h2{font-size:28px}.cta{width:100%}}
   </style>
 </head>
 <body>
@@ -20,50 +25,100 @@
       <section class="hero">
         <div>
           <div class="eyebrow">BATTERY INTELLIGENCE PLATFORM</div>
-          <h1>Kurangi risiko downtime battery forklift.</h1>
-          <p class="lead">Gunakan assessment singkat untuk melihat kondisi battery, pola operasional, dan area yang perlu diperiksa lebih lanjut sebelum masalah berkembang menjadi downtime.</p>
+          <h1>Kenali kondisi battery sebelum downtime datang.</h1>
+          <p class="lead">Assessment singkat untuk pengguna material handling equipment. Baca kondisi battery, pola operasional, dan indikasi risiko sebelum mengambil langkah berikutnya.</p>
           <div class="cta-row">
             <a class="cta yellow bip-link" href="https://bip.drrkobe.com/diagnosis/form">Cek Kondisi Battery →</a>
-            <a class="cta" href="#cara-kerja">Lihat Cara Kerja</a>
+            <a class="cta" href="#unit">Lihat Jenis Unit</a>
           </div>
+          <div class="micro">Tanpa harga di halaman publik · Fokus assessment teknis</div>
         </div>
-        <aside class="panel">
-          <div class="panel-label">ASSESSMENT FOCUS</div>
-          <h2>Data sederhana. Keputusan lebih terarah.</h2>
-          <div class="checks">
-            <div class="check">Kondisi dan umur battery</div>
-            <div class="check">Pola charging dan jam operasional</div>
-            <div class="check">Gejala downtime yang dilaporkan</div>
-            <div class="check">Rekomendasi langkah pemeriksaan berikutnya</div>
-          </div>
-        </aside>
-      </section>
 
-      <section class="section" id="cara-kerja">
-        <h2>Cara kerjanya sederhana.</h2>
-        <div class="flow">
-          <article class="flow-card"><div class="flow-no">01</div><div class="flow-title">Masuk ke BIP</div><div class="flow-text">Klik assessment dari halaman ini.</div></article>
-          <article class="flow-card"><div class="flow-no">02</div><div class="flow-title">Isi kondisi unit</div><div class="flow-text">Jawab pertanyaan berdasarkan kondisi nyata di lapangan.</div></article>
-          <article class="flow-card"><div class="flow-no">03</div><div class="flow-title">Lihat hasil</div><div class="flow-text">Dapatkan ringkasan kondisi dan area yang perlu diperiksa.</div></article>
-          <article class="flow-card"><div class="flow-no">04</div><div class="flow-title">Technical assessment</div><div class="flow-text">Jika diperlukan, lanjutkan konsultasi melalui WhatsApp.</div></article>
+        <div class="motion-stage" aria-label="Ilustrasi forklift dan battery industrial">
+          <div class="motion-grid"></div><div class="motion-orbit"></div>
+          <div class="stage-copy"><strong>Forklift Battery Intelligence</strong><span>Visual diagnosis untuk membantu membaca kondisi operasional secara lebih terarah.</span></div>
+          <div class="battery-float"><div class="battery-head"><span>BATTERY</span><span>STATUS</span></div><div class="battery-icon"><div class="battery-level"></div></div></div>
+          <div class="forklift-scene">
+            <svg class="forklift-svg" viewBox="0 0 760 320" role="img" aria-label="Ilustrasi counterbalance forklift">
+              <g fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M110 238h325l65-82h72l28 82"/>
+                <path d="M236 235V116h158l42 119"/>
+                <path d="M282 116V60h102l34 56"/>
+                <path d="M570 66v172M605 66v172M605 95h70M605 126h62"/>
+                <path d="M110 238H72"/>
+              </g>
+              <g fill="#ffcc00"><rect x="132" y="149" width="98" height="72" rx="12"/><rect x="452" y="164" width="102" height="62" rx="12"/></g>
+              <g fill="#f7f7f3"><circle cx="185" cy="248" r="36"/><circle cx="500" cy="248" r="36"/></g>
+              <g fill="#0a0a0a"><circle cx="185" cy="248" r="16"/><circle cx="500" cy="248" r="16"/></g>
+            </svg>
+          </div>
         </div>
       </section>
 
       <section class="section">
-        <h2>Untuk siapa?</h2>
-        <div class="grid">
-          <article class="card"><strong>Fleet Forklift</strong><p>Perusahaan yang menggunakan forklift battery dalam kegiatan operasional harian.</p></article>
-          <article class="card"><strong>Lead Acid User</strong><p>Pengguna yang ingin memahami kondisi battery dan risiko operasional berdasarkan data yang tersedia.</p></article>
-          <article class="card"><strong>Operational Decision</strong><p>Untuk membantu menentukan apakah dibutuhkan inspeksi, perawatan, pengujian, atau assessment lanjutan.</p></article>
+        <div class="section-head"><h2>Brand yang Anda kenal di lapangan.</h2><p class="section-lead">Landing page menampilkan cakupan brand material handling yang umum digunakan. Assessment tetap berdasarkan data unit dan kondisi battery yang dimasukkan user.</p></div>
+        <div class="brand-wall">
+          <div class="brand-chip">Toyota</div><div class="brand-chip">Jungheinrich</div><div class="brand-chip">Mitsubishi</div><div class="brand-chip">STILL</div><div class="brand-chip">Komatsu</div>
+          <div class="brand-chip">Heli</div><div class="brand-chip">Hangcha</div><div class="brand-chip">Linde</div><div class="brand-chip">Crown</div><div class="brand-chip">Hyster</div>
         </div>
       </section>
 
-      <section class="bottom">
-        <div class="bottom-box">
-          <div><h2>Mulai dari kondisi battery Anda.</h2><p>Tidak menampilkan harga. Fokus pada assessment teknis dan langkah berikutnya.</p></div>
-          <a class="cta bip-link" href="https://bip.drrkobe.com/diagnosis/form">Mulai Assessment →</a>
+      <section class="section" id="unit">
+        <div class="section-head"><h2>Jenis unit yang menjadi fokus.</h2><p class="section-lead">Mulai dari aplikasi gudang sampai handling area produksi dan logistik.</p></div>
+        <div class="equipment-grid">
+          <article class="equipment-card">
+            <div class="equipment-visual">
+              <svg class="equipment-svg" viewBox="0 0 560 260" role="img" aria-label="Ilustrasi reach truck">
+                <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M66 205h235l52-59h50l26 59"/><path d="M168 202V96h120l33 106"/><path d="M368 38v168M396 38v168M396 70h82"/><path d="M396 98h73"/></g>
+                <g fill="#ffcc00"><rect x="92" y="129" width="74" height="60" rx="10"/><rect x="303" y="158" width="60" height="45" rx="8"/></g><g fill="#f7f7f3"><circle cx="132" cy="213" r="27"/><circle cx="334" cy="213" r="27"/></g>
+              </svg>
+            </div><div class="equipment-copy"><div class="equipment-title">Reach Truck</div><div class="equipment-text">Untuk operasi racking dan gudang dengan kebutuhan lifting tinggi dan ruang manuver yang lebih sempit.</div></div>
+          </article>
+
+          <article class="equipment-card">
+            <div class="equipment-visual">
+              <svg class="equipment-svg" viewBox="0 0 560 260" role="img" aria-label="Ilustrasi counterbalance forklift">
+                <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M60 205h276l50-66h58l26 66"/><path d="M150 202V100h142l37 102"/><path d="M199 100V58h88l31 42"/><path d="M433 44v162M463 44v162M463 76h60M463 106h52"/></g>
+                <g fill="#ffcc00"><rect x="83" y="139" width="82" height="55" rx="10"/><rect x="336" y="155" width="72" height="47" rx="9"/></g><g fill="#f7f7f3"><circle cx="132" cy="214" r="28"/><circle cx="373" cy="214" r="28"/></g>
+              </svg>
+            </div><div class="equipment-copy"><div class="equipment-title">Counterbalance</div><div class="equipment-text">Untuk handling umum di area produksi, loading, warehouse, dan perpindahan material harian.</div></div>
+          </article>
+
+          <article class="equipment-card">
+            <div class="equipment-visual">
+              <svg class="equipment-svg" viewBox="0 0 560 260" role="img" aria-label="Ilustrasi pallet mover">
+                <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M88 177h250l55 29h94"/><path d="M102 177l-34 37"/><path d="M338 177V99h58l44 107"/><path d="M123 152h185"/></g>
+                <g fill="#ffcc00"><rect x="323" y="115" width="68" height="60" rx="10"/></g><g fill="#f7f7f3"><circle cx="108" cy="215" r="20"/><circle cx="380" cy="214" r="24"/></g>
+              </svg>
+            </div><div class="equipment-copy"><div class="equipment-title">Pallet Mover</div><div class="equipment-text">Untuk perpindahan pallet dan material pada jalur operasional dengan frekuensi kerja berulang.</div></div>
+          </article>
         </div>
       </section>
+
+      <section class="section">
+        <div class="battery-section">
+          <div class="battery-panel"><div class="eyebrow">BATTERY ASSESSMENT</div><h3>Lead Acid atau Lithium-ion?</h3><p>BIP membantu membaca kondisi yang dilaporkan user terlebih dahulu. Hasil assessment menjadi dasar percakapan teknis sebelum menentukan langkah pemeriksaan atau opsi battery berikutnya.</p><a class="cta bip-link" href="https://bip.drrkobe.com/diagnosis/form">Mulai Assessment →</a></div>
+          <div class="battery-art" aria-label="Ilustrasi battery forklift industrial"><div class="battery-scan"></div>
+            <svg viewBox="0 0 620 320" role="img" aria-label="Battery industrial">
+              <g fill="none" stroke="#fff" stroke-width="10" stroke-linejoin="round"><rect x="110" y="72" width="400" height="180" rx="24"/><path d="M170 72V42h70v30M380 72V42h70v30"/><path d="M170 112h280M170 152h280M170 192h280"/></g>
+              <g fill="#ffcc00"><rect x="152" y="100" width="58" height="120" rx="10"/><rect x="225" y="100" width="58" height="120" rx="10"/><rect x="298" y="100" width="58" height="120" rx="10"/><rect x="371" y="100" width="58" height="120" rx="10"/></g>
+              <g fill="#fff"><circle cx="205" cy="42" r="10"/><circle cx="415" cy="42" r="10"/></g>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="cara-kerja">
+        <div class="section-head"><h2>Cara kerjanya sederhana.</h2><p class="section-lead">Tidak perlu registrasi panjang. User cukup masuk ke BIP dan mengikuti assessment.</p></div>
+        <div class="flow">
+          <article class="flow-card"><div class="flow-no">01</div><div class="flow-title">Masuk ke BIP</div><div class="flow-text">Klik assessment dari landing page DRRKOBE.</div></article>
+          <article class="flow-card"><div class="flow-no">02</div><div class="flow-title">Isi kondisi unit</div><div class="flow-text">Jawab pertanyaan berdasarkan kondisi nyata di lapangan.</div></article>
+          <article class="flow-card"><div class="flow-no">03</div><div class="flow-title">Lihat hasil</div><div class="flow-text">Dapatkan ringkasan kondisi dan area yang perlu diperiksa.</div></article>
+          <article class="flow-card"><div class="flow-no">04</div><div class="flow-title">Lanjut WhatsApp</div><div class="flow-text">Jika diperlukan, lanjutkan technical assessment dan follow-up.</div></article>
+        </div>
+      </section>
+
+      <section class="bottom"><div class="bottom-box"><div><h2>Mulai dari kondisi battery Anda.</h2><p>Assessment teknis singkat sebelum menentukan langkah berikutnya.</p></div><a class="cta bip-link" href="https://bip.drrkobe.com/diagnosis/form">Mulai Assessment →</a></div></section>
     </main>
 
     <footer class="footer"><span>© 2026 DRRKOBE</span><span>Battery Intelligence Platform</span></footer>
@@ -74,17 +129,10 @@
       var allowed = ['utm_source', 'utm_campaign', 'utm_content'];
       var incoming = new URLSearchParams(window.location.search);
       var outgoing = new URLSearchParams();
-
-      allowed.forEach(function (key) {
-        var value = incoming.get(key);
-        if (value) outgoing.set(key, value);
-      });
-
+      allowed.forEach(function (key) { var value = incoming.get(key); if (value) outgoing.set(key, value); });
       document.querySelectorAll('.bip-link').forEach(function (link) {
         var target = new URL(link.getAttribute('href'));
-        outgoing.forEach(function (value, key) {
-          target.searchParams.set(key, value);
-        });
+        outgoing.forEach(function (value, key) { target.searchParams.set(key, value); });
         link.setAttribute('href', target.toString());
       });
     })();
