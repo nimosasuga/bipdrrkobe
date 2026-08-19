@@ -16,7 +16,7 @@ const GREY: [number, number, number] = [82, 82, 91];
 const MID_GREY: [number, number, number] = [161, 161, 170];
 const LIGHT: [number, number, number] = [228, 228, 231];
 const WHITE: [number, number, number] = [255, 255, 255];
-const WHATSAPP_DISPLAY = '0851 3333 1476';
+const WHATSAPP_DISPLAY = '085133331476';
 const WHATSAPP_LINK = 'https://wa.me/6285133331476';
 
 type JsPdfApiWithV3 = typeof jsPDF.API & {
@@ -213,11 +213,12 @@ function drawPageNine(instance: jsPDF) {
   instance.setTextColor(...WHITE);
   instance.text(WHATSAPP_DISPLAY, MARGIN + 10, 163);
 
+  instance.setFont('helvetica', 'bold');
+  instance.setFontSize(8);
+  instance.setTextColor(...YELLOW);
   try {
     (instance as any).textWithLink('Hubungi via WhatsApp →', MARGIN + 112, 163, { url: WHATSAPP_LINK });
   } catch {
-    instance.setFontSize(8);
-    instance.setTextColor(...YELLOW);
     instance.text('wa.me/6285133331476', MARGIN + 112, 163);
   }
 
