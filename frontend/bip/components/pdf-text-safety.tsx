@@ -2,12 +2,22 @@
 
 import { jsPDF } from 'jspdf';
 
+const FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_context';
+
 type JsPdfApiWithGuard = typeof jsPDF.API & {
   __drrkobePdfTextSafetyRegistered?: boolean;
 };
 
 type JsPdfInstanceWithGuard = jsPDF & {
   __drrkobePdfTextSafetyPatched?: boolean;
+};
+
+type FinancialContext = {
+  actualDowntimeHoursPerUnitMonth: number | null;
+  downtimeCostPerHour: number;
+  maintenanceCostPerUnitMonth: number;
+  chargingCostPerUnitMonth: number;
+  fleetSize: number;
 };
 
 type PdfReportState = {
@@ -18,6 +28,7 @@ type PdfReportState = {
   wateringDetail: string | null;
   productivityReported: boolean;
   replaceNextAnnualAmount: boolean;
+  financialContext: FinancialContext;
 };
 
 function normalizePdfText(value: string): string {
@@ -30,6 +41,59 @@ function normalizePdfText(value: string): string {
     .replace(/[“”„]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/…/g, '...');
+}
+
+function readFinancialContext(): FinancialContext {
+  const fallback: FinancialContext = {
+    actualDowntimeHoursPerUnitMonth: null,
+    downtimeCostPerHour: 0,
+    maintenanceCostPerUnitMonth: 0,
+    chargingCostPerUnitMonth: 0,
+    fleetSize: 1,
+  };
+
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const raw = window.sessionStorage.getItem(FINANCIAL_CONTEXT_KEY);
+    if (!raw) return fallback;
+
+    const parsed = JSON.parse(raw) as Partial<FinancialContext>;
+    return {
+      actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
+        ? parsed.actualDowntimeHoursPerUnitMonth
+        : null,
+      downtimeCostPerHour: Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
+      maintenanceCostPerUnitMonth: Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
+      chargingCostPerUnitMonth: Math.max(0, Number(parsed.chargingCostPerUnitMonth) || 0),
+      fleetSize: Math.max(1, Number(parsed.fleetSize) || 1),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function rupiah(value: number): string {
+  return `Rp ${Math.round(value).toLocaleString('id-ID')}`;
+}
+
+function financialTotals(context: FinancialContext) {
+  const downtimeComplete = context.actualDowntimeHoursPerUnitMonth !== null && context.downtimeCostPerHour > 0;
+  const monthlyDowntime = downtimeComplete
+    ? (context.actualDowntimeHoursPerUnitMonth || 0) * context.downtimeCostPerHour * context.fleetSize
+    : 0;
+  const monthlyMaintenance = context.maintenanceCostPerUnitMonth * context.fleetSize;
+  const monthlyCharging = context.chargingCostPerUnitMonth * context.fleetSize;
+  const monthlyKnown = monthlyDowntime + monthlyMaintenance + monthlyCharging;
+
+  return {
+    downtimeComplete,
+    monthlyDowntime,
+    monthlyMaintenance,
+    monthlyCharging,
+    monthlyKnown,
+    annualKnown: monthlyKnown * 12,
+  };
 }
 
 function detailAfterPrefix(text: string, prefix: string): string | null {
@@ -83,21 +147,24 @@ function evidenceValueForMetric(text: string, state: PdfReportState): string | n
   const label = state.metricLabel;
   if (!label) return null;
 
+  const context = state.financialContext;
+  const totals = financialTotals(context);
+  const actualDowntime = context.actualDowntimeHoursPerUnitMonth;
+
   if (label === 'WAKTU HENTI') {
     if (/^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(text) || /^-\d+(?:[.,]\d+)?%$/.test(text)) {
+      if (actualDowntime !== null) return `${actualDowntime} jam/bln`;
       return state.downtimeDetail || 'Frekuensi belum tersedia';
     }
   }
 
-  if (label === 'PENGISIAN DAYA') {
-    if (/^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(text)) {
-      return state.chargingDetail ? `${state.chargingDetail} / siklus` : 'Durasi belum tersedia';
-    }
+  if (label === 'PENGISIAN DAYA' && /^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(text)) {
+    return state.chargingDetail ? `${state.chargingDetail} / siklus` : 'Durasi belum tersedia';
   }
 
   if (label === 'PERAWATAN') {
     if (/^\d+(?:[.,]\d+)?x\/thn$/i.test(text) || /^-\d+(?:[.,]\d+)?%$/.test(text)) {
-      return state.wateringDetail || 'Pola perawatan belum tersedia';
+      return state.wateringDetail || 'Pola belum tersedia';
     }
   }
 
@@ -110,7 +177,15 @@ function evidenceValueForMetric(text: string, state: PdfReportState): string | n
   }
 
   if (label === 'WAKTU HENTI / BULAN' && /^Rp\s/i.test(text)) {
-    return 'Perlu durasi aktual';
+    return totals.downtimeComplete ? rupiah(totals.monthlyDowntime) : 'Belum dihitung';
+  }
+
+  if (label === 'PERAWATAN / BULAN' && /^Rp\s/i.test(text) && context.maintenanceCostPerUnitMonth > 0) {
+    return rupiah(totals.monthlyMaintenance);
+  }
+
+  if (label === 'PENGISIAN / BULAN' && /^Rp\s/i.test(text) && context.chargingCostPerUnitMonth > 0) {
+    return rupiah(totals.monthlyCharging);
   }
 
   return null;
@@ -118,9 +193,10 @@ function evidenceValueForMetric(text: string, state: PdfReportState): string | n
 
 function metricNoteReplacement(text: string, state: PdfReportState): string | null {
   const label = state.metricLabel;
+  const context = state.financialContext;
 
   if (label === 'WAKTU HENTI' && (text === 'Perkiraan unit tidak produktif' || text === 'Potensi pengurangan')) {
-    return 'Frekuensi yang dilaporkan';
+    return context.actualDowntimeHoursPerUnitMonth !== null ? 'Durasi aktual dari user' : 'Frekuensi yang dilaporkan';
   }
   if (label === 'PENGISIAN DAYA' && text === 'Waktu terserap untuk pengisian') {
     return 'Durasi pengisian yang dilaporkan';
@@ -135,10 +211,46 @@ function metricNoteReplacement(text: string, state: PdfReportState): string | nu
     return 'Butuh baseline konsumsi aktual';
   }
   if (label === 'WAKTU HENTI / BULAN' && /unit\s+x\s+\d+(?:[.,]\d+)?\s+jam/i.test(text)) {
-    return 'Biaya/jam tersedia; durasi kejadian belum diukur';
+    return context.actualDowntimeHoursPerUnitMonth !== null
+      ? `${context.fleetSize} unit x ${context.actualDowntimeHoursPerUnitMonth} jam aktual`
+      : 'Isi durasi downtime aktual';
   }
 
   return null;
+}
+
+function layoutSafeCopy(text: string): string {
+  const replacements: Record<string, string> = {
+    '05 / LEAD ACID DAN LITHIUM-ION': '05 / LEAD ACID VS LITHIUM-ION',
+    'Apa yang berubah bila teknologinya': 'Masalah Lead Acid vs keunggulan',
+    'berbeda?': 'Lithium-ion',
+    'PARAMETER': 'PAIN POINT',
+    'LITHIUM-ION UNTUK DIEVALUASI': 'KEUNGGULAN LITHIUM-ION',
+    'Waktu pengisian': 'Charging window',
+    '8-12 jam, kemudian masa pendinginan': 'Charging & recovery perlu dijadwalkan',
+    'Sekitar 1,5-2,5 jam; dapat diisi saat jeda operasi': 'Opportunity charging saat jeda*',
+    'Umur siklus': 'Konsistensi daya',
+    'Sekitar 1.200 siklus': 'Dipengaruhi usia & pemakaian',
+    'Sekitar 3.000+ siklus': 'BMS bantu kelola charging',
+    'Perawatan rutin': 'Routine battery care',
+    'Isi air, equalizing, dan pembersihan': 'Watering, equalizing, dan cleaning',
+    'Tidak memerlukan isi air atau equalizing rutin': 'Tanpa watering / equalizing rutin',
+    'Efisiensi energi': 'Availability charging',
+    'Sekitar 75-80%': 'Charging window lebih terbatas',
+    'Dapat mencapai sekitar 95%+': 'Charging lebih fleksibel*',
+    'Membutuhkan waktu pengisian dan rotasi battery': 'Perlu charging window & rotasi battery',
+    'Lebih fleksibel untuk pengisian saat jeda': 'Opportunity charging untuk multi-shift*',
+    'Aspek keselamatan': 'Penanganan battery',
+    'Perlu penanganan asam dan ventilasi gas': 'Asam, gas charging, ventilasi & PPE',
+    'Tanpa isi air; tetap perlu pengawasan Battery Management System (BMS)': 'Tanpa watering; tetap diawasi BMS',
+    '06 / POTENSI PERBAIKAN': '06 / VALIDASI LITHIUM-ION',
+    'Apa yang mungkin diperoleh bila pola': 'Mengapa Lithium-ion layak dievaluasi',
+    'operasi diperbaiki?': 'untuk operasi ini?',
+    'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data': 'Gunakan data diagnosis sebagai dasar evaluasi. Saving dan ROI memerlukan baseline site.',
+    'operasi dan pemeriksaan lapangan.': 'Nilai aktual tetap perlu diverifikasi.',
+  };
+
+  return replacements[text] ?? text;
 }
 
 function validatePublicReportText(value: string, state: PdfReportState): string {
@@ -155,57 +267,33 @@ function validatePublicReportText(value: string, state: PdfReportState): string 
 
   if (text === 'PERKIRAAN BEBAN OPERASIONAL SETAHUN') {
     state.replaceNextAnnualAmount = true;
-    return 'STATUS PERHITUNGAN FINANSIAL';
+    const totals = financialTotals(state.financialContext);
+    if (totals.monthlyKnown <= 0) return 'STATUS PERHITUNGAN FINANSIAL';
+    return totals.downtimeComplete ? 'TOTAL BEBAN OPERASIONAL SETAHUN' : 'SUBTOTAL BIAYA TERIDENTIFIKASI';
   }
 
   if (state.replaceNextAnnualAmount && /^Rp\s/i.test(text)) {
     state.replaceNextAnnualAmount = false;
-    return 'Belum dapat ditotal';
+    const totals = financialTotals(state.financialContext);
+    return totals.annualKnown > 0 ? rupiah(totals.annualKnown) : 'Belum final';
   }
 
   if (text === 'berdasarkan data biaya dan data operasi yang tersedia') {
-    return 'Biaya maintenance dan charging tersedia. Durasi downtime aktual belum tersedia.';
+    const totals = financialTotals(state.financialContext);
+    return totals.downtimeComplete
+      ? 'Dihitung dari data biaya dan downtime aktual yang diisi user.'
+      : 'Subtotal dari biaya yang sudah diketahui; downtime belum termasuk.';
   }
 
   if (text.startsWith('Skenario potensi pengurangan beban:')) {
-    return 'Potensi pengurangan beban dihitung setelah baseline dan target teknis tervalidasi.';
+    return 'Potensi saving dibahas setelah target teknis tervalidasi.';
   }
-
-  const replacements: Record<string, string> = {
-    '05 / LEAD ACID DAN LITHIUM-ION': '05 / MASALAH LEAD ACID & KEUNGGULAN LITHIUM-ION',
-    'Apa yang berubah bila teknologinya berbeda?': 'Masalah Lead Acid vs Keunggulan Lithium-ion',
-    'Perbandingan ini digunakan untuk memahami konsekuensi terhadap cara kerja. Harga battery tidak ditampilkan pada tahap penilaian.': 'Fokus pada pain point yang dilaporkan: charging, routine maintenance, dan kesiapan unit. Harga battery tidak ditampilkan pada tahap penilaian.',
-    'PARAMETER': 'MASALAH / KEBUTUHAN',
-    'LITHIUM-ION UNTUK DIEVALUASI': 'BAGAIMANA LITHIUM-ION MEMBANTU',
-    'Waktu pengisian': 'Charging window',
-    '8-12 jam, kemudian masa pendinginan': 'Membutuhkan siklus charging dan recovery yang disiplin.',
-    'Sekitar 1,5-2,5 jam; dapat diisi saat jeda operasi': 'Opportunity charging dapat membantu menjaga kesiapan unit bila battery, charger, BMS, dan unit kompatibel.',
-    'Umur siklus': 'Konsistensi daya',
-    'Sekitar 1.200 siklus': 'Dipengaruhi umur, depth of discharge, charging, temperatur, dan maintenance.',
-    'Sekitar 3.000+ siklus': 'BMS membantu mengelola charging/discharging; kapasitas dan duty cycle tetap perlu diverifikasi.',
-    'Perawatan rutin': 'Routine battery care',
-    'Isi air, equalizing, dan pembersihan': 'Memerlukan watering, equalizing, kebersihan, dan pemeriksaan terminal sesuai kebutuhan.',
-    'Tidak memerlukan isi air atau equalizing rutin': 'Tidak membutuhkan watering atau equalizing; pemeriksaan beralih ke BMS, charger, konektor, dan temperatur.',
-    'Efisiensi energi': 'Availability saat charging',
-    'Sekitar 75-80%': 'Charging window dapat berbenturan dengan kebutuhan jam operasi.',
-    'Dapat mencapai sekitar 95%+': 'Charging yang lebih fleksibel dapat mengurangi konflik dengan jam operasi; dampak aktual perlu diukur.',
-    'Operasi multi-shift': 'Operasi multi-shift',
-    'Membutuhkan waktu pengisian dan rotasi battery': 'Charging window dan rotasi battery perlu dijaga agar unit tetap siap.',
-    'Lebih fleksibel untuk pengisian saat jeda': 'Opportunity charging dapat menjadi keunggulan pada operasi multi-shift bila kompatibel.',
-    'Aspek keselamatan': 'Penanganan battery',
-    'Perlu penanganan asam dan ventilasi gas': 'Memerlukan pengendalian elektrolit/asam, ventilasi gas, kebersihan, dan PPE.',
-    'Tanpa isi air; tetap perlu pengawasan Battery Management System (BMS)': 'Menghilangkan watering dan penanganan elektrolit rutin; tetap perlu pengawasan BMS, temperatur, charger, dan konektor.',
-    'Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan. Kelayakannya bergantung pada pola kerja unit, charger, konektor, ruang battery, temperatur, jumlah shift, dan target kesiapan unit.': 'Lithium-ion layak dievaluasi bila pain point utama berasal dari charging window, watering/equalizing, routine maintenance, atau kebutuhan multi-shift. Kompatibilitas battery, charger, BMS, dimensi, konektor, kapasitas, dan duty cycle tetap harus diverifikasi.',
-    '06 / POTENSI PERBAIKAN': '06 / VALIDASI KESESUAIAN LITHIUM-ION',
-    'Apa yang mungkin diperoleh bila pola operasi diperbaiki?': 'Mengapa Lithium-ion layak dievaluasi untuk operasi ini?',
-    'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data operasi dan pemeriksaan lapangan.': 'Gunakan fakta diagnosis untuk melihat kecocokan awal Lithium-ion. Saving dan ROI baru dihitung setelah baseline operasi dan data site dapat diverifikasi.',
-  };
 
   if (text.startsWith('Apakah potensi pengurangan beban sekitar Rp')) {
-    return 'Apakah pengurangan downtime, charging window, dan routine maintenance cukup bernilai untuk dilanjutkan ke evaluasi investasi?';
+    return 'Apakah pain point charging, downtime, dan perawatan cukup bernilai untuk evaluasi investasi?';
   }
 
-  return replacements[text] ?? text;
+  return layoutSafeCopy(text);
 }
 
 const api = jsPDF.API as JsPdfApiWithGuard;
@@ -228,6 +316,7 @@ if (!api.__drrkobePdfTextSafetyRegistered) {
         wateringDetail: null,
         productivityReported: false,
         replaceNextAnnualAmount: false,
+        financialContext: readFinancialContext(),
       };
 
       const originalText = instance.text;
