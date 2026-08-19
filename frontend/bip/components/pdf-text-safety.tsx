@@ -26,8 +26,10 @@ type PdfReportState = {
   downtimeDetail: string | null;
   chargingDetail: string | null;
   wateringDetail: string | null;
+  runtimeDetail: string | null;
+  operationDetail: string | null;
   productivityReported: boolean;
-  replaceNextAnnualAmount: boolean;
+  replaceNextFinancialAmount: boolean;
   financialContext: FinancialContext;
 };
 
@@ -61,7 +63,7 @@ function readFinancialContext(): FinancialContext {
     const parsed = JSON.parse(raw) as Partial<FinancialContext>;
     return {
       actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
-        ? parsed.actualDowntimeHoursPerUnitMonth
+        ? Math.max(0, parsed.actualDowntimeHoursPerUnitMonth)
         : null,
       downtimeCostPerHour: Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
       maintenanceCostPerUnitMonth: Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
@@ -103,26 +105,36 @@ function detailAfterPrefix(text: string, prefix: string): string | null {
 }
 
 function captureDiagnosisEvidence(text: string, state: PdfReportState) {
-  if (text === 'ISI AIR BATTERY') {
+  const normalized = normalizePdfText(text).trim();
+  if (!normalized) return;
+
+  if (normalized === 'ISI AIR BATTERY') {
     state.captureWateringValue = true;
     return;
   }
 
-  if (state.captureWateringValue && text !== 'ISI AIR BATTERY') {
-    if (text && text !== '-') state.wateringDetail = text;
+  if (state.captureWateringValue && normalized !== 'ISI AIR BATTERY') {
+    if (normalized !== '-') state.wateringDetail = normalized;
     state.captureWateringValue = false;
   }
 
-  const downtime = detailAfterPrefix(text, 'Unit berhenti karena battery/pengisian:');
+  const runtime = detailAfterPrefix(normalized, 'Daya battery bertahan:');
+  if (runtime) state.runtimeDetail = runtime;
+
+  const downtime = detailAfterPrefix(normalized, 'Unit berhenti karena battery/pengisian:');
   if (downtime) state.downtimeDetail = downtime;
 
-  const charging = detailAfterPrefix(text, 'Durasi pengisian:');
+  const charging = detailAfterPrefix(normalized, 'Durasi pengisian:');
   if (charging) state.chargingDetail = charging;
 
-  const watering = detailAfterPrefix(text, 'Pemeriksaan atau isi air battery:');
+  const watering = detailAfterPrefix(normalized, 'Pemeriksaan atau isi air battery:');
   if (watering) state.wateringDetail = watering;
 
-  if (text.toLowerCase().includes('produktivitas forklift menurun')) {
+  if (/^\d+\s+shift\s+-\s+\d+\s+jam\/hari$/i.test(normalized)) {
+    state.operationDetail = normalized;
+  }
+
+  if (normalized.toLowerCase().includes('produktivitas forklift menurun')) {
     state.productivityReported = true;
   }
 }
@@ -143,6 +155,40 @@ function trackMetricLabel(text: string, state: PdfReportState) {
   if (labels.has(text)) state.metricLabel = text;
 }
 
+function layoutSafeCopy(text: string): string {
+  const replacements: Record<string, string> = {
+    '05 / LEAD ACID DAN LITHIUM-ION': '05 / LEAD ACID VS LITHIUM-ION',
+    'Apa yang berubah bila teknologinya': 'Masalah Lead Acid vs keunggulan',
+    'berbeda?': 'Lithium-ion',
+    'PARAMETER': 'PAIN POINT',
+    'LITHIUM-ION UNTUK DIEVALUASI': 'KEUNGGULAN LITHIUM-ION',
+    'Waktu pengisian': 'Charging window',
+    '8-12 jam, kemudian masa pendinginan': 'Charging & recovery perlu dijadwalkan',
+    'Sekitar 1,5-2,5 jam; dapat diisi saat jeda operasi': 'Opportunity charging saat jeda*',
+    'Umur siklus': 'Konsistensi daya',
+    'Sekitar 1.200 siklus': 'Dipengaruhi usia & pemakaian',
+    'Sekitar 3.000+ siklus': 'BMS bantu kelola charging',
+    'Perawatan rutin': 'Routine battery care',
+    'Isi air, equalizing, dan pembersihan': 'Watering, equalizing, dan cleaning',
+    'Tidak memerlukan isi air atau equalizing rutin': 'Tanpa watering / equalizing rutin',
+    'Efisiensi energi': 'Availability charging',
+    'Sekitar 75-80%': 'Charging window lebih terbatas',
+    'Dapat mencapai sekitar 95%+': 'Charging lebih fleksibel*',
+    'Membutuhkan waktu pengisian dan rotasi battery': 'Perlu charging window & rotasi battery',
+    'Lebih fleksibel untuk pengisian saat jeda': 'Opportunity charging multi-shift*',
+    'Aspek keselamatan': 'Penanganan battery',
+    'Perlu penanganan asam dan ventilasi gas': 'Asam, gas charging, ventilasi & PPE',
+    'Tanpa isi air; tetap perlu pengawasan Battery Management System (BMS)': 'Tanpa watering; tetap diawasi BMS',
+    '06 / POTENSI PERBAIKAN': '06 / VALIDASI LITHIUM-ION',
+    'Apa yang mungkin diperoleh bila pola': 'Mengapa Lithium-ion layak dievaluasi',
+    'operasi diperbaiki?': 'untuk operasi ini?',
+    'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data': 'Gunakan data diagnosis sebagai dasar evaluasi. Saving dan ROI memerlukan baseline site.',
+    'operasi dan pemeriksaan lapangan.': 'Nilai aktual tetap perlu diverifikasi.',
+  };
+
+  return replacements[text] ?? text;
+}
+
 function evidenceValueForMetric(text: string, state: PdfReportState): string | null {
   const label = state.metricLabel;
   if (!label) return null;
@@ -151,21 +197,18 @@ function evidenceValueForMetric(text: string, state: PdfReportState): string | n
   const totals = financialTotals(context);
   const actualDowntime = context.actualDowntimeHoursPerUnitMonth;
 
-  if (label === 'WAKTU HENTI') {
-    if (/^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(text) || /^-\d+(?:[.,]\d+)?%$/.test(text)) {
-      if (actualDowntime !== null) return `${actualDowntime} jam/bln`;
-      return state.downtimeDetail || 'Frekuensi belum tersedia';
-    }
+  if (label === 'WAKTU HENTI' && /^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(text)) {
+    return actualDowntime !== null
+      ? `${actualDowntime} jam/bln`
+      : state.downtimeDetail || 'Frekuensi belum tersedia';
   }
 
   if (label === 'PENGISIAN DAYA' && /^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(text)) {
     return state.chargingDetail ? `${state.chargingDetail} / siklus` : 'Durasi belum tersedia';
   }
 
-  if (label === 'PERAWATAN') {
-    if (/^\d+(?:[.,]\d+)?x\/thn$/i.test(text) || /^-\d+(?:[.,]\d+)?%$/.test(text)) {
-      return state.wateringDetail || 'Pola belum tersedia';
-    }
+  if (label === 'PERAWATAN' && /^\d+(?:[.,]\d+)?x\/thn$/i.test(text)) {
+    return state.wateringDetail || 'Pola belum tersedia';
   }
 
   if (label === 'PRODUKTIVITAS' && /^-\d+(?:[.,]\d+)?%$/.test(text)) {
@@ -195,13 +238,13 @@ function metricNoteReplacement(text: string, state: PdfReportState): string | nu
   const label = state.metricLabel;
   const context = state.financialContext;
 
-  if (label === 'WAKTU HENTI' && (text === 'Perkiraan unit tidak produktif' || text === 'Potensi pengurangan')) {
+  if (label === 'WAKTU HENTI' && text === 'Perkiraan unit tidak produktif') {
     return context.actualDowntimeHoursPerUnitMonth !== null ? 'Durasi aktual dari user' : 'Frekuensi yang dilaporkan';
   }
   if (label === 'PENGISIAN DAYA' && text === 'Waktu terserap untuk pengisian') {
     return 'Durasi pengisian yang dilaporkan';
   }
-  if (label === 'PERAWATAN' && (text === 'Isi air dan pemeriksaan rutin' || text === 'Potensi pengurangan pekerjaan rutin')) {
+  if (label === 'PERAWATAN' && text === 'Isi air dan pemeriksaan rutin') {
     return 'Pola perawatan yang dilaporkan';
   }
   if (label === 'PRODUKTIVITAS' && text === 'Terhadap jam operasi tersedia') {
@@ -219,45 +262,53 @@ function metricNoteReplacement(text: string, state: PdfReportState): string | nu
   return null;
 }
 
-function layoutSafeCopy(text: string): string {
-  const replacements: Record<string, string> = {
-    '05 / LEAD ACID DAN LITHIUM-ION': '05 / LEAD ACID VS LITHIUM-ION',
-    'Apa yang berubah bila teknologinya': 'Masalah Lead Acid vs keunggulan',
-    'berbeda?': 'Lithium-ion',
-    'PARAMETER': 'PAIN POINT',
-    'LITHIUM-ION UNTUK DIEVALUASI': 'KEUNGGULAN LITHIUM-ION',
-    'Waktu pengisian': 'Charging window',
-    '8-12 jam, kemudian masa pendinginan': 'Charging & recovery perlu dijadwalkan',
-    'Sekitar 1,5-2,5 jam; dapat diisi saat jeda operasi': 'Opportunity charging saat jeda*',
-    'Umur siklus': 'Konsistensi daya',
-    'Sekitar 1.200 siklus': 'Dipengaruhi usia & pemakaian',
-    'Sekitar 3.000+ siklus': 'BMS bantu kelola charging',
-    'Perawatan rutin': 'Routine battery care',
-    'Isi air, equalizing, dan pembersihan': 'Watering, equalizing, dan cleaning',
-    'Tidak memerlukan isi air atau equalizing rutin': 'Tanpa watering / equalizing rutin',
-    'Efisiensi energi': 'Availability charging',
-    'Sekitar 75-80%': 'Charging window lebih terbatas',
-    'Dapat mencapai sekitar 95%+': 'Charging lebih fleksibel*',
-    'Membutuhkan waktu pengisian dan rotasi battery': 'Perlu charging window & rotasi battery',
-    'Lebih fleksibel untuk pengisian saat jeda': 'Opportunity charging untuk multi-shift*',
-    'Aspek keselamatan': 'Penanganan battery',
-    'Perlu penanganan asam dan ventilasi gas': 'Asam, gas charging, ventilasi & PPE',
-    'Tanpa isi air; tetap perlu pengawasan Battery Management System (BMS)': 'Tanpa watering; tetap diawasi BMS',
-    '06 / POTENSI PERBAIKAN': '06 / VALIDASI LITHIUM-ION',
-    'Apa yang mungkin diperoleh bila pola': 'Mengapa Lithium-ion layak dievaluasi',
-    'operasi diperbaiki?': 'untuk operasi ini?',
-    'Persentase di bawah adalah skenario awal untuk membantu pembahasan. Nilai aktual harus dibuktikan dengan data': 'Gunakan data diagnosis sebagai dasar evaluasi. Saving dan ROI memerlukan baseline site.',
-    'operasi dan pemeriksaan lapangan.': 'Nilai aktual tetap perlu diverifikasi.',
-  };
+function pageSpecificNarrative(instance: jsPDF, text: string, page: number, state: PdfReportState): string[] | null {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const runtime = state.runtimeDetail || 'runtime yang dilaporkan';
+  const charging = state.chargingDetail || 'durasi charging yang dilaporkan';
+  const downtime = state.financialContext.actualDowntimeHoursPerUnitMonth !== null
+    ? `${state.financialContext.actualDowntimeHoursPerUnitMonth} jam/bulan`
+    : state.downtimeDetail || 'frekuensi downtime yang dilaporkan';
+  const watering = state.wateringDetail || 'pola perawatan yang dilaporkan';
+  const operation = state.operationDetail || 'pola operasi yang dilaporkan';
 
-  return replacements[text] ?? text;
+  if (page === 3 && normalized.startsWith('Kondisi battery menunjukkan risiko operasional tinggi.')) {
+    const replacement = `Kombinasi runtime ${runtime}, charging ${charging}, dan downtime ${downtime} menunjukkan battery belum mendukung ${operation} secara konsisten. Prioritas solusi: ukur kapasitas aktual, verifikasi charger serta kondisi cell/temperatur, lalu cocokkan charging window dengan pola shift. Jika Lead Acid tetap membatasi operasi setelah verifikasi, lanjutkan evaluasi Lithium-ion untuk opportunity charging dan pengurangan routine maintenance.`;
+    return (instance as any).splitTextToSize(replacement, 98).slice(0, 7);
+  }
+
+  if (page === 4 && normalized.startsWith('Pada armada')) {
+    const replacement = `Gangguan utama yang dilaporkan adalah downtime ${downtime}, charging ${charging}, dan perawatan ${watering}. Fokus perbaikan adalah memulihkan kesiapan unit: verifikasi kapasitas battery dan charger, lalu evaluasi Lithium-ion bila charging window dan routine maintenance tetap membatasi operasi.`;
+    return (instance as any).splitTextToSize(replacement, 160).slice(0, 6);
+  }
+
+  if (page === 7 && normalized.startsWith('Pada armada')) {
+    const replacement = `Dengan downtime ${downtime}, charging ${charging}, dan ${operation}, Lithium-ion layak dievaluasi karena dapat memberi charging lebih fleksibel dan menghilangkan watering/equalizing rutin. Keputusan konversi tetap memerlukan validasi charger, BMS, konektor, dimensi, kapasitas, dan duty cycle.`;
+    return (instance as any).splitTextToSize(replacement, 160).slice(0, 6);
+  }
+
+  return null;
 }
 
-function validatePublicReportText(value: string, state: PdfReportState): string {
+function validateSingleText(value: string, state: PdfReportState): string {
   const text = normalizePdfText(value);
-
   captureDiagnosisEvidence(text, state);
   trackMetricLabel(text, state);
+
+  if (text === 'PERKIRAAN BEBAN OPERASIONAL SETAHUN') {
+    state.replaceNextFinancialAmount = true;
+    const totals = financialTotals(state.financialContext);
+    if (totals.monthlyKnown <= 0) return 'STATUS PERHITUNGAN FINANSIAL';
+    return totals.downtimeComplete
+      ? 'TOTAL BIAYA OPERASIONAL / BULAN'
+      : 'SUBTOTAL BIAYA TERIDENTIFIKASI / BULAN';
+  }
+
+  if (state.replaceNextFinancialAmount && /^Rp\s/i.test(text)) {
+    state.replaceNextFinancialAmount = false;
+    const totals = financialTotals(state.financialContext);
+    return totals.monthlyKnown > 0 ? rupiah(totals.monthlyKnown) : 'Belum final';
+  }
 
   const evidenceValue = evidenceValueForMetric(text, state);
   if (evidenceValue) return evidenceValue;
@@ -265,24 +316,12 @@ function validatePublicReportText(value: string, state: PdfReportState): string 
   const metricNote = metricNoteReplacement(text, state);
   if (metricNote) return metricNote;
 
-  if (text === 'PERKIRAAN BEBAN OPERASIONAL SETAHUN') {
-    state.replaceNextAnnualAmount = true;
-    const totals = financialTotals(state.financialContext);
-    if (totals.monthlyKnown <= 0) return 'STATUS PERHITUNGAN FINANSIAL';
-    return totals.downtimeComplete ? 'TOTAL BEBAN OPERASIONAL SETAHUN' : 'SUBTOTAL BIAYA TERIDENTIFIKASI';
-  }
-
-  if (state.replaceNextAnnualAmount && /^Rp\s/i.test(text)) {
-    state.replaceNextAnnualAmount = false;
-    const totals = financialTotals(state.financialContext);
-    return totals.annualKnown > 0 ? rupiah(totals.annualKnown) : 'Belum final';
-  }
-
   if (text === 'berdasarkan data biaya dan data operasi yang tersedia') {
     const totals = financialTotals(state.financialContext);
+    if (totals.monthlyKnown <= 0) return 'Data biaya belum cukup untuk dihitung.';
     return totals.downtimeComplete
-      ? 'Dihitung dari data biaya dan downtime aktual yang diisi user.'
-      : 'Subtotal dari biaya yang sudah diketahui; downtime belum termasuk.';
+      ? `Estimasi tahunan berdasarkan data user: ${rupiah(totals.annualKnown)}.`
+      : `Subtotal tahunan data yang diketahui: ${rupiah(totals.annualKnown)}; downtime belum termasuk.`;
   }
 
   if (text.startsWith('Skenario potensi pengurangan beban:')) {
@@ -294,6 +333,85 @@ function validatePublicReportText(value: string, state: PdfReportState): string 
   }
 
   return layoutSafeCopy(text);
+}
+
+function transformText(instance: jsPDF, input: string | string[], state: PdfReportState): string | string[] {
+  const page = Number((instance as any).getCurrentPageInfo?.()?.pageNumber || (instance as any).internal?.getCurrentPageInfo?.()?.pageNumber || 1);
+
+  if (Array.isArray(input)) {
+    const normalizedLines = input.map((line) => normalizePdfText(String(line)));
+    const joined = normalizedLines.join(' ').replace(/\s+/g, ' ').trim();
+    captureDiagnosisEvidence(joined, state);
+
+    if (state.replaceNextFinancialAmount && /^Rp\s/i.test(joined)) {
+      state.replaceNextFinancialAmount = false;
+      const totals = financialTotals(state.financialContext);
+      return totals.monthlyKnown > 0 ? rupiah(totals.monthlyKnown) : 'Belum final';
+    }
+
+    const narrative = pageSpecificNarrative(instance, joined, page, state);
+    if (narrative) return narrative;
+
+    if (state.metricLabel === 'WAKTU HENTI' && /^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(joined)) {
+      const actual = state.financialContext.actualDowntimeHoursPerUnitMonth;
+      return actual !== null ? `${actual} jam/bln` : state.downtimeDetail || joined;
+    }
+
+    if (state.metricLabel === 'PENGISIAN DAYA' && /^\d+(?:[.,]\d+)?\s+jam\/bln$/i.test(joined)) {
+      return state.chargingDetail ? `${state.chargingDetail} / siklus` : joined;
+    }
+
+    return normalizedLines.map((line) => validateSingleText(line, state));
+  }
+
+  return validateSingleText(input, state);
+}
+
+function drawFinancialChart(instance: jsPDF, context: FinancialContext) {
+  const totals = financialTotals(context);
+  if (totals.monthlyKnown <= 0) return;
+
+  const originalPage = Number((instance as any).getCurrentPageInfo?.()?.pageNumber || 8);
+  try {
+    instance.setPage(5);
+
+    const rows = [
+      { label: 'Downtime', value: totals.monthlyDowntime },
+      { label: 'Perawatan', value: totals.monthlyMaintenance },
+      { label: 'Pengisian', value: totals.monthlyCharging },
+    ];
+    const maxValue = Math.max(1, ...rows.map((row) => row.value));
+
+    instance.setFillColor(252, 252, 249);
+    instance.rect(18, 238, 174, 37, 'F');
+
+    instance.setFont('helvetica', 'bold');
+    instance.setFontSize(7.4);
+    instance.setTextColor(10, 10, 10);
+    instance.text('STATISTIK BIAYA BULANAN - DATA YANG DIISI USER', 18, 243);
+
+    rows.forEach((row, index) => {
+      const y = 250 + index * 8;
+      instance.setFont('helvetica', 'bold');
+      instance.setFontSize(6.4);
+      instance.setTextColor(82, 82, 91);
+      instance.text(row.label, 18, y);
+
+      instance.setFillColor(228, 228, 231);
+      instance.roundedRect(48, y - 3, 79, 3.4, 1.7, 1.7, 'F');
+      if (row.value > 0) {
+        instance.setFillColor(255, 204, 0);
+        instance.roundedRect(48, y - 3, Math.max(2, (79 * row.value) / maxValue), 3.4, 1.7, 1.7, 'F');
+      }
+
+      instance.setFont('helvetica', 'bold');
+      instance.setFontSize(6.4);
+      instance.setTextColor(10, 10, 10);
+      instance.text(row.value > 0 ? rupiah(row.value) : 'Belum dihitung', 190, y, { align: 'right' });
+    });
+  } finally {
+    instance.setPage(originalPage);
+  }
 }
 
 const api = jsPDF.API as JsPdfApiWithGuard;
@@ -314,25 +432,30 @@ if (!api.__drrkobePdfTextSafetyRegistered) {
         downtimeDetail: null,
         chargingDetail: null,
         wateringDetail: null,
+        runtimeDetail: null,
+        operationDetail: null,
         productivityReported: false,
-        replaceNextAnnualAmount: false,
+        replaceNextFinancialAmount: false,
         financialContext: readFinancialContext(),
       };
 
       const originalText = instance.text;
       const originalGetTextWidth = instance.getTextWidth;
+      const originalSave = (instance as any).save.bind(instance);
 
       instance.getTextWidth = ((text: string) => {
         return originalGetTextWidth.call(instance, normalizePdfText(String(text)));
       }) as jsPDF['getTextWidth'];
 
       instance.text = ((text: string | string[], ...args: unknown[]) => {
-        const safeText = Array.isArray(text)
-          ? text.map((line) => validatePublicReportText(String(line), reportState))
-          : validatePublicReportText(String(text), reportState);
-
+        const safeText = transformText(instance, text, reportState);
         return (originalText as (...params: unknown[]) => jsPDF).call(instance, safeText, ...args);
       }) as jsPDF['text'];
+
+      (instance as any).save = (...args: unknown[]) => {
+        drawFinancialChart(instance, reportState.financialContext);
+        return originalSave(...args);
+      };
     },
   ]);
 }
