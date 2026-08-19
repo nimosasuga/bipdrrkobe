@@ -2,6 +2,24 @@
 
 import { useEffect } from 'react';
 
+const FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_context';
+
+type FinancialContext = {
+  actualDowntimeHoursPerUnitMonth: number | null;
+  downtimeCostPerHour: number;
+  maintenanceCostPerUnitMonth: number;
+  chargingCostPerUnitMonth: number;
+  fleetSize: number;
+};
+
+const EMPTY_FINANCIAL_CONTEXT: FinancialContext = {
+  actualDowntimeHoursPerUnitMonth: null,
+  downtimeCostPerHour: 0,
+  maintenanceCostPerUnitMonth: 0,
+  chargingCostPerUnitMonth: 0,
+  fleetSize: 1,
+};
+
 function setText(node: Element | null | undefined, value: string) {
   if (node && node.textContent !== value) node.textContent = value;
 }
@@ -9,6 +27,12 @@ function setText(node: Element | null | undefined, value: string) {
 function leaf(root: ParentNode, text: string): HTMLElement | null {
   return Array.from(root.querySelectorAll<HTMLElement>('*')).find(
     (node) => node.children.length === 0 && node.textContent?.trim() === text,
+  ) ?? null;
+}
+
+function leafStartsWith(root: ParentNode, text: string): HTMLElement | null {
+  return Array.from(root.querySelectorAll<HTMLElement>('*')).find(
+    (node) => node.children.length === 0 && node.textContent?.trim().startsWith(text),
   ) ?? null;
 }
 
@@ -28,14 +52,152 @@ function rewriteMetric(root: ParentNode, label: string, value: string, sub: stri
   setText(card.children[2], sub);
 }
 
+function readFinancialContext(): FinancialContext {
+  try {
+    const raw = window.sessionStorage.getItem(FINANCIAL_CONTEXT_KEY);
+    if (!raw) return { ...EMPTY_FINANCIAL_CONTEXT };
+
+    const parsed = JSON.parse(raw) as Partial<FinancialContext>;
+    return {
+      actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
+        ? parsed.actualDowntimeHoursPerUnitMonth
+        : null,
+      downtimeCostPerHour: Number(parsed.downtimeCostPerHour) || 0,
+      maintenanceCostPerUnitMonth: Number(parsed.maintenanceCostPerUnitMonth) || 0,
+      chargingCostPerUnitMonth: Number(parsed.chargingCostPerUnitMonth) || 0,
+      fleetSize: Math.max(1, Number(parsed.fleetSize) || 1),
+    };
+  } catch {
+    return { ...EMPTY_FINANCIAL_CONTEXT };
+  }
+}
+
+function writeFinancialContext(context: FinancialContext) {
+  try {
+    window.sessionStorage.setItem(FINANCIAL_CONTEXT_KEY, JSON.stringify(context));
+  } catch {
+    // Assessment tetap dapat berjalan bila browser menolak sessionStorage.
+  }
+}
+
+function clearFinancialContext() {
+  try {
+    window.sessionStorage.removeItem(FINANCIAL_CONTEXT_KEY);
+  } catch {
+    // Tidak memblokir assessment.
+  }
+}
+
+function formatRupiah(value: number): string {
+  return `Rp ${Math.round(value).toLocaleString('id-ID')}`;
+}
+
+function numberInputByLabel(root: ParentNode, labelText: string): number {
+  const label = Array.from(root.querySelectorAll<HTMLLabelElement>('label')).find(
+    (node) => node.textContent?.includes(labelText),
+  );
+  const input = label?.querySelector<HTMLInputElement>('input[type="number"]');
+  return Math.max(0, Number(input?.value) || 0);
+}
+
+function ensureActualDowntimeField(section: HTMLElement) {
+  const financialMarker = leaf(section, 'DATA FINANSIAL — OPSIONAL');
+  const financialPanel = financialMarker?.parentElement;
+  if (!financialPanel || financialPanel.querySelector('[data-actual-downtime-field="1"]')) return;
+
+  const stored = readFinancialContext();
+  const field = document.createElement('div');
+  field.dataset.actualDowntimeField = '1';
+  field.className = 'mt-5 rounded-[18px] border border-[#FFCC00]/60 bg-[#FFFEF0] p-5';
+  field.innerHTML = `
+    <div class="font-mono text-[10px] font-bold tracking-[.12em] text-zinc-500">DATA DOWNTIME AKTUAL — OPSIONAL</div>
+    <label class="mt-3 block text-sm font-black text-zinc-800" for="drrkobe-actual-downtime-hours">Total downtime battery / charger per forklift dalam 1 bulan (jam)</label>
+    <input id="drrkobe-actual-downtime-hours" data-actual-downtime-input="1" class="drr-input" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Contoh: 6" value="${stored.actualDowntimeHoursPerUnitMonth ?? ''}">
+    <p class="mt-2 text-xs leading-5 text-zinc-600">Isi berdasarkan log atau data site bila diketahui. Nilai ini digunakan untuk menghitung biaya downtime di PDF. Jika kosong, DRRKOBE tidak akan membuat asumsi durasi.</p>
+  `;
+
+  const introParagraph = Array.from(financialPanel.querySelectorAll<HTMLParagraphElement>('p')).find(
+    (node) => node.textContent?.includes('Tidak mengetahui biaya internal tidak menghambat diagnosis'),
+  );
+
+  if (introParagraph) introParagraph.insertAdjacentElement('afterend', field);
+  else financialPanel.appendChild(field);
+}
+
+function captureFinancialContext(section: HTMLElement): FinancialContext {
+  const actualInput = section.querySelector<HTMLInputElement>('[data-actual-downtime-input="1"]');
+  const actualRaw = actualInput?.value.trim() ?? '';
+  const actualDowntimeHoursPerUnitMonth = actualRaw === '' ? null : Math.max(0, Number(actualRaw) || 0);
+
+  const fleetLabel = leafStartsWith(section, 'Jumlah Forklift:');
+  const fleetMatch = fleetLabel?.textContent?.match(/Jumlah Forklift:\s*(\d+)/i);
+  const fleetSize = Math.max(1, Number(fleetMatch?.[1]) || 1);
+
+  const context: FinancialContext = {
+    actualDowntimeHoursPerUnitMonth,
+    downtimeCostPerHour: numberInputByLabel(section, 'biaya downtime 1 forklift / jam'),
+    maintenanceCostPerUnitMonth: numberInputByLabel(section, 'Maintenance Lead Acid / unit / bulan'),
+    chargingCostPerUnitMonth: numberInputByLabel(section, 'Charging / listrik / unit / bulan'),
+    fleetSize,
+  };
+
+  writeFinancialContext(context);
+  return context;
+}
+
+function updateFinancialPreview(section: HTMLElement, context: FinancialContext) {
+  const actualDowntime = context.actualDowntimeHoursPerUnitMonth;
+  const downtimeKnown = actualDowntime !== null && actualDowntime >= 0 && context.downtimeCostPerHour > 0;
+  const monthlyDowntime = downtimeKnown ? actualDowntime * context.downtimeCostPerHour * context.fleetSize : 0;
+  const monthlyMaintenance = context.maintenanceCostPerUnitMonth * context.fleetSize;
+  const monthlyCharging = context.chargingCostPerUnitMonth * context.fleetSize;
+  const subtotal = monthlyDowntime + monthlyMaintenance + monthlyCharging;
+  const hasAnyCost = subtotal > 0;
+
+  const operational = leaf(section, 'OPERATIONAL IMPACT')?.parentElement;
+  if (operational) {
+    const rows = operational.querySelectorAll<HTMLElement>('.flex.items-center.justify-between');
+    rows.forEach((row) => {
+      const label = row.querySelector('span')?.textContent?.trim();
+      const value = row.querySelector('strong');
+      if (!value) return;
+
+      if (label === 'Downtime') {
+        setText(value, actualDowntime !== null ? `${actualDowntime} jam/bulan` : 'Gunakan frekuensi diagnosis');
+      }
+      if (label === 'Charging') setText(value, 'Lihat input charging');
+      if (label === 'Maintenance') setText(value, 'Lihat input perawatan');
+      if (label === 'Productivity') setText(value, 'Berdasarkan gejala');
+    });
+  }
+
+  const financial = leaf(section, 'FINANCIAL STATUS')?.parentElement;
+  if (!financial || financial.children.length < 3) return;
+
+  if (!hasAnyCost) {
+    setText(financial.children[1], 'Menunggu Data Biaya');
+    setText(financial.children[2], 'Isi data biaya yang diketahui. Tidak ada nominal yang dibuat dari asumsi.');
+    return;
+  }
+
+  if (downtimeKnown) {
+    setText(financial.children[1], `${formatRupiah(subtotal)} / bulan`);
+    setText(financial.children[2], `Total berdasarkan data yang Anda isi. Estimasi tahunan: ${formatRupiah(subtotal * 12)}. Saving dan ROI tetap menunggu target teknis tervalidasi.`);
+    return;
+  }
+
+  setText(financial.children[1], `Subtotal ${formatRupiah(subtotal)} / bulan`);
+  setText(financial.children[2], `Biaya yang sudah diketahui dapat dihitung. Downtime belum termasuk sampai durasi aktual dan biaya/jam tersedia.`);
+}
+
 function validateStep6() {
   const section = sectionByTitle('Dampak Operasional Gabungan');
   if (!section) return;
 
-  rewriteMetric(section, 'DOWNTIME', 'Perlu data aktual', 'Durasi kejadian belum diukur');
+  rewriteMetric(section, 'DOWNTIME', 'Frekuensi tersedia', 'Gunakan frekuensi downtime yang dilaporkan');
   rewriteMetric(section, 'CHARGING EXPOSURE', 'Berdasarkan input user', 'Gunakan durasi charging yang dilaporkan');
-  rewriteMetric(section, 'MAINTENANCE', 'Perlu baseline', 'Gunakan frekuensi aktual di site');
-  rewriteMetric(section, 'PRODUCTIVITY', 'Perlu validasi', 'Tidak dihitung tanpa waktu henti aktual');
+  rewriteMetric(section, 'MAINTENANCE', 'Berdasarkan input user', 'Gunakan pola perawatan yang dilaporkan');
+  rewriteMetric(section, 'PRODUCTIVITY', 'Terdampak bila dilaporkan', 'Tidak dikonversi menjadi persentase tanpa baseline');
 
   const heading = Array.from(section.querySelectorAll<HTMLElement>('div')).find(
     (node) => node.children.length === 0 && node.textContent?.trim() === 'Kontribusi tiap masalah terhadap kondisi operasional',
@@ -54,7 +216,7 @@ function validateStep6() {
     if (node.textContent?.includes('Angka di atas adalah indikator operasional')) {
       setText(
         node,
-        'DRRKOBE tidak mengubah frekuensi kejadian menjadi jam downtime atau persentase productivity loss tanpa durasi kejadian aktual. Nilai finansial baru dihitung setelah data site tervalidasi.',
+        'DRRKOBE menggunakan frekuensi, durasi charging, pola perawatan, dan gejala yang benar-benar dilaporkan. Durasi downtime dan nilai finansial hanya dihitung bila data aktual diberikan.',
       );
     }
   });
@@ -165,9 +327,9 @@ function validateStep8() {
   );
   setText(eyebrow, 'STEP 8 / 9 — OPERATIONAL READINESS');
 
-  rewriteMetric(section, 'DOWNTIME', 'Perlu data aktual', 'Butuh durasi kejadian aktual', 'VALIDASI DOWNTIME');
+  rewriteMetric(section, 'DOWNTIME', 'Gunakan data aktual', 'Masukkan total downtime bila diketahui', 'VALIDASI DOWNTIME');
   rewriteMetric(section, 'ENERGY', 'Perlu data charger', 'Butuh baseline konsumsi aktual', 'VALIDASI ENERGI');
-  rewriteMetric(section, 'MAINTENANCE', 'Perlu baseline', 'Butuh aktivitas maintenance aktual', 'VALIDASI MAINTENANCE');
+  rewriteMetric(section, 'MAINTENANCE', 'Gunakan data aktual', 'Gunakan biaya maintenance bila diketahui', 'VALIDASI MAINTENANCE');
 
   const fitLabel = leaf(section, 'OPERATIONAL FIT');
   if (fitLabel) {
@@ -195,35 +357,15 @@ function validateStep8() {
     'Dasar keputusan: jumlah unit, jam operasi, shift, charging window, downtime aktual, kondisi battery, dan kompatibilitas charger perlu dibaca bersama sebelum membahas potensi efisiensi atau investasi.',
   );
 
-  const operational = leaf(section, 'OPERATIONAL IMPACT')?.parentElement;
-  if (operational) {
-    const rows = operational.querySelectorAll<HTMLElement>('.flex.items-center.justify-between');
-    rows.forEach((row) => {
-      const label = row.querySelector('span')?.textContent?.trim();
-      const value = row.querySelector('strong');
-      if (!value) return;
-
-      if (label === 'Downtime') setText(value, 'Perlu durasi aktual');
-      if (label === 'Charging') setText(value, 'Lihat input charging');
-      if (label === 'Maintenance') setText(value, 'Lihat input perawatan');
-      if (label === 'Productivity') setText(value, 'Perlu validasi');
-    });
-  }
-
-  const financial = leaf(section, 'FINANCIAL STATUS')?.parentElement;
-  if (financial && financial.children.length >= 3) {
-    setText(financial.children[1], 'Pending Site Validation');
-    setText(
-      financial.children[2],
-      'Nilai Rupiah, saving, dan ROI menunggu durasi downtime, baseline biaya, konsumsi, serta data maintenance yang tervalidasi.',
-    );
-  }
+  ensureActualDowntimeField(section);
+  const context = captureFinancialContext(section);
+  updateFinancialPreview(section, context);
 
   Array.from(section.querySelectorAll<HTMLElement>('p')).forEach((node) => {
     if (node.textContent?.startsWith('Tidak mengetahui biaya internal tidak menghambat diagnosis.')) {
       setText(
         node,
-        'Tidak mengetahui biaya internal tidak menghambat diagnosis. Nilai Rupiah, saving, dan ROI tidak dihitung otomatis sampai durasi downtime, baseline biaya, konsumsi, serta biaya maintenance benar-benar tersedia.',
+        'Tidak mengetahui seluruh biaya internal tidak menghambat diagnosis. Isi hanya data yang benar-benar diketahui; PDF akan menghitung subtotal atau total dari data tersebut tanpa asumsi tersembunyi.',
       );
     }
   });
@@ -252,6 +394,15 @@ function validateWhatsapp() {
         }
       }
 
+      const financialContext = readFinancialContext();
+      if (financialContext.actualDowntimeHoursPerUnitMonth !== null) {
+        const insertAt = filtered.findIndex((line) => line.startsWith('Saving / ROI:'));
+        const actualLine = `Downtime aktual: ${financialContext.actualDowntimeHoursPerUnitMonth} jam / unit / bulan`;
+        if (!filtered.includes(actualLine)) {
+          filtered.splice(insertAt >= 0 ? insertAt : filtered.length, 0, actualLine);
+        }
+      }
+
       url.searchParams.set('text', filtered.join('\n'));
       const nextHref = url.toString();
       if (anchor.href !== nextHref) anchor.href = nextHref;
@@ -264,9 +415,17 @@ function validateWhatsapp() {
 export default function StepValidationGuard() {
   useEffect(() => {
     let queued = false;
+    let stepOneSeen = false;
 
     const apply = () => {
       queued = false;
+
+      const stepOne = sectionByTitle('Pilih Bidang Industri & Model Forklift');
+      if (stepOne && !stepOneSeen) {
+        stepOneSeen = true;
+        clearFinancialContext();
+      }
+
       validateStep6();
       validateStep7();
       validateStep8();
@@ -283,8 +442,14 @@ export default function StepValidationGuard() {
 
     const observer = new MutationObserver(queue);
     observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('input', queue, true);
+    document.addEventListener('change', queue, true);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('input', queue, true);
+      document.removeEventListener('change', queue, true);
+    };
   }, []);
 
   return null;
