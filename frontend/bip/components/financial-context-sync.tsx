@@ -71,7 +71,11 @@ function inputNumberByLabel(section: HTMLElement, labelText: string): number | n
   const input = label?.querySelector<HTMLInputElement>('input[type="number"]');
   if (!input) return null;
   const raw = input.value.trim();
-  if (raw === '') return 0;
+
+  // Jangan menimpa nilai yang sudah dikunci dengan 0 hanya karena controlled input
+  // sedang transient/blank ketika React melakukan render ulang.
+  if (raw === '') return null;
+
   return Math.max(0, Number(raw) || 0);
 }
 
@@ -107,6 +111,11 @@ function writeLithiumScenario(context: FinancialContext) {
   }
 }
 
+function persistContext(context: FinancialContext) {
+  writeFinancialContext(context);
+  writeLithiumScenario(context);
+}
+
 function syncNow() {
   const section = stepEight();
   if (!section) return;
@@ -125,16 +134,56 @@ function syncNow() {
     fleetSize: fleetSize(section, existing.fleetSize),
   };
 
-  writeFinancialContext(context);
-  writeLithiumScenario(context);
+  persistContext(context);
+}
+
+function syncDirectInput(target: EventTarget | null) {
+  const input = target instanceof HTMLInputElement ? target : null;
+  if (!input || input.type !== 'number') return;
+
+  const section = stepEight();
+  if (!section || !section.contains(input)) return;
+
+  const labelText = (input.closest('label')?.textContent ?? '').toLowerCase();
+  if (!labelText) return;
+
+  const raw = input.value.trim();
+  if (raw === '') return;
+
+  const value = Math.max(0, Number(raw) || 0);
+  const context = readExisting();
+  const stableDowntime = readStableDowntime();
+
+  context.actualDowntimeHoursPerUnitMonth = stableDowntime ?? context.actualDowntimeHoursPerUnitMonth;
+  context.fleetSize = fleetSize(section, context.fleetSize);
+
+  if (labelText.includes('biaya downtime 1 forklift / jam')) {
+    context.downtimeCostPerHour = value;
+  } else if (labelText.includes('maintenance lead acid / unit / bulan')) {
+    context.maintenanceCostPerUnitMonth = value;
+  } else if (labelText.includes('charging / listrik / unit / bulan')) {
+    context.chargingCostPerUnitMonth = value;
+  } else {
+    return;
+  }
+
+  // Lock nilai dari event input itu sendiri. Ini mencegah nilai charging terakhir
+  // hilang ketika user langsung menekan tombol menuju Step 9.
+  persistContext(context);
 }
 
 export default function FinancialContextSync() {
   useEffect(() => {
     const sync = () => syncNow();
 
-    const onInput = () => syncNow();
-    const onChange = () => syncNow();
+    const onInput = (event: Event) => {
+      syncDirectInput(event.target);
+      syncNow();
+    };
+    const onChange = (event: Event) => {
+      syncDirectInput(event.target);
+      syncNow();
+    };
     const onClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target?.closest('button')) return;
