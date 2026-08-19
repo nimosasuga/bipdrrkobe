@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import LithiumScenarioGuard from '../../../components/lithium-scenario-guard';
 import StepValidationGuard from '../../../components/step-validation-guard';
 
 export const metadata: Metadata = {
@@ -21,6 +22,7 @@ export default function DiagnosisFormLayout({ children }: { children: ReactNode 
   return (
     <>
       <StepValidationGuard />
+      <LithiumScenarioGuard />
       {children}
     </>
   );
