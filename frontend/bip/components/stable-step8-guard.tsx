@@ -104,7 +104,6 @@ function captureStableBaselineFromStep4() {
 
   if (age === null || shift === null) return;
 
-  // Mengembalikan formula baseline yang sebelumnya stabil di BIP.
   const baseline = Math.round(((age * 1.5 + shift * 2) * 1.2) * 10) / 10;
   writeBaseline(baseline);
 }
@@ -113,8 +112,6 @@ function neutralizeInjectedDowntimeField() {
   const injected = document.querySelector<HTMLElement>('[data-actual-downtime-field="1"]');
   if (!injected) return;
 
-  // Marker dipertahankan supaya guard lama tidak menambah field kembali,
-  // tetapi seluruh UI/input dihilangkan dari Step 8.
   if (injected.childElementCount > 0) injected.replaceChildren();
   injected.style.display = 'none';
   injected.setAttribute('aria-hidden', 'true');
@@ -176,5 +173,5 @@ export default function StableStep8Guard() {
     };
   }, []);
 
-  return null;
+  return <style jsx global>{`[data-actual-downtime-field="1"]{display:none!important}`}</style>;
 }
