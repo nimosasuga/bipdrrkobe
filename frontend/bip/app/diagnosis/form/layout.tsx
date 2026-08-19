@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import FinancialContextSync from '../../../components/financial-context-sync';
 import LithiumScenarioGuard from '../../../components/lithium-scenario-guard';
+import PdfStabilityLock from '../../../components/pdf-stability-lock';
 import PdfV3Branding from '../../../components/pdf-v3-branding';
 import StableStep8Guard from '../../../components/stable-step8-guard';
 import StepValidationGuard from '../../../components/step-validation-guard';
@@ -29,6 +30,7 @@ export default function DiagnosisFormLayout({ children }: { children: ReactNode 
       <FinancialContextSync />
       <LithiumScenarioGuard />
       <PdfV3Branding />
+      <PdfStabilityLock />
       {children}
     </>
   );
