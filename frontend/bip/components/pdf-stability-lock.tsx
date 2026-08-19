@@ -3,6 +3,7 @@
 import { jsPDF } from 'jspdf';
 
 const FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_context';
+const DIRECT_FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_direct';
 
 const DOWNTIME_REDUCTION_FACTOR = 0.75;
 const MAINTENANCE_REDUCTION_FACTOR = 0.90;
@@ -15,6 +16,11 @@ type FinancialContext = {
   chargingCostPerUnitMonth: number;
   fleetSize: number;
 };
+
+type DirectFinancialContext = Partial<Pick<
+  FinancialContext,
+  'downtimeCostPerHour' | 'maintenanceCostPerUnitMonth' | 'chargingCostPerUnitMonth' | 'fleetSize'
+>>;
 
 type PdfLockState = {
   page5Metric: 'downtime' | 'maintenance' | 'charging' | 'total' | null;
@@ -49,6 +55,34 @@ function currentPage(instance: jsPDF): number {
   );
 }
 
+function readDirectFinancialContext(): DirectFinancialContext {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.sessionStorage.getItem(DIRECT_FINANCIAL_CONTEXT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as DirectFinancialContext;
+    const direct: DirectFinancialContext = {};
+
+    if (typeof parsed.downtimeCostPerHour === 'number') {
+      direct.downtimeCostPerHour = Math.max(0, parsed.downtimeCostPerHour);
+    }
+    if (typeof parsed.maintenanceCostPerUnitMonth === 'number') {
+      direct.maintenanceCostPerUnitMonth = Math.max(0, parsed.maintenanceCostPerUnitMonth);
+    }
+    if (typeof parsed.chargingCostPerUnitMonth === 'number') {
+      direct.chargingCostPerUnitMonth = Math.max(0, parsed.chargingCostPerUnitMonth);
+    }
+    if (typeof parsed.fleetSize === 'number') {
+      direct.fleetSize = Math.max(1, parsed.fleetSize);
+    }
+
+    return direct;
+  } catch {
+    return {};
+  }
+}
+
 function readFinancialContext(): FinancialContext {
   const fallback: FinancialContext = {
     actualDowntimeHoursPerUnitMonth: null,
@@ -60,22 +94,28 @@ function readFinancialContext(): FinancialContext {
 
   if (typeof window === 'undefined') return fallback;
 
+  let parsed: Partial<FinancialContext> = {};
   try {
     const raw = window.sessionStorage.getItem(FINANCIAL_CONTEXT_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<FinancialContext>;
-    return {
-      actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
-        ? Math.max(0, parsed.actualDowntimeHoursPerUnitMonth)
-        : null,
-      downtimeCostPerHour: Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
-      maintenanceCostPerUnitMonth: Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
-      chargingCostPerUnitMonth: Math.max(0, Number(parsed.chargingCostPerUnitMonth) || 0),
-      fleetSize: Math.max(1, Number(parsed.fleetSize) || 1),
-    };
+    if (raw) parsed = JSON.parse(raw) as Partial<FinancialContext>;
   } catch {
-    return fallback;
+    parsed = {};
   }
+
+  const direct = readDirectFinancialContext();
+  return {
+    actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
+      ? Math.max(0, parsed.actualDowntimeHoursPerUnitMonth)
+      : null,
+    downtimeCostPerHour: direct.downtimeCostPerHour
+      ?? Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
+    maintenanceCostPerUnitMonth: direct.maintenanceCostPerUnitMonth
+      ?? Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
+    chargingCostPerUnitMonth: direct.chargingCostPerUnitMonth
+      ?? Math.max(0, Number(parsed.chargingCostPerUnitMonth) || 0),
+    fleetSize: direct.fleetSize
+      ?? Math.max(1, Number(parsed.fleetSize) || 1),
+  };
 }
 
 function totals() {
@@ -123,6 +163,10 @@ function normalizeInput(input: string | string[]): string {
   return lines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
+function isPage5AmountPlaceholder(value: string): boolean {
+  return /^Rp\s/i.test(value) || /^(Belum diketahui|Belum dihitung)$/i.test(value);
+}
+
 function transformLockedText(instance: jsPDF, input: string | string[]): string | string[] {
   const page = currentPage(instance);
   const joined = normalizeInput(input);
@@ -134,7 +178,8 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
     return joined.replace(/\s*\/\s*siklus$/i, '');
   }
 
-  // LOCK PAGE 5: hanya sinkronkan nominal yang berasal dari field finansial Step 8.
+  // LOCK PAGE 5: nominal user menjadi sumber kebenaran utama.
+  // Direct financial lock mencegah nilai input terakhir diubah kembali menjadi 0 oleh guard/render lain.
   if (page === 5) {
     if (joined === 'WAKTU HENTI / BULAN') state.page5Metric = 'downtime';
     if (joined === 'PERAWATAN / BULAN') state.page5Metric = 'maintenance';
@@ -143,7 +188,7 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
 
     const value = totals();
 
-    if (state.page5Metric && /^Rp\s/i.test(joined)) {
+    if (state.page5Metric && isPage5AmountPlaceholder(joined)) {
       const metric = state.page5Metric;
       state.page5Metric = null;
 
@@ -151,6 +196,14 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
       if (metric === 'maintenance' && value.maintenance > 0) return rupiah(value.maintenance);
       if (metric === 'charging' && value.charging > 0) return rupiah(value.charging);
       if (metric === 'total' && value.lead > 0) return rupiah(value.lead);
+    }
+
+    if (joined === 'Menunggu data pengisian' && value.charging > 0) {
+      return 'Berdasarkan data perusahaan';
+    }
+
+    if (joined === 'Menunggu data perawatan' && value.maintenance > 0) {
+      return 'Berdasarkan data perusahaan';
     }
 
     if (joined.startsWith('Estimasi tahunan berdasarkan data user:') && value.lead > 0) {
