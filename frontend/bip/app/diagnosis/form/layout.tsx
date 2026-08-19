@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import LithiumScenarioGuard from '../../../components/lithium-scenario-guard';
+import PdfV3Branding from '../../../components/pdf-v3-branding';
+import StableStep8Guard from '../../../components/stable-step8-guard';
 import StepValidationGuard from '../../../components/step-validation-guard';
 
 export const metadata: Metadata = {
@@ -22,7 +24,9 @@ export default function DiagnosisFormLayout({ children }: { children: ReactNode 
   return (
     <>
       <StepValidationGuard />
+      <StableStep8Guard />
       <LithiumScenarioGuard />
+      <PdfV3Branding />
       {children}
     </>
   );
