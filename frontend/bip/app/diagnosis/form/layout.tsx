@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import FinancialContextSync from '../../../components/financial-context-sync';
 import LithiumScenarioGuard from '../../../components/lithium-scenario-guard';
 import PdfV3Branding from '../../../components/pdf-v3-branding';
 import StableStep8Guard from '../../../components/stable-step8-guard';
@@ -25,6 +26,7 @@ export default function DiagnosisFormLayout({ children }: { children: ReactNode 
     <>
       <StepValidationGuard />
       <StableStep8Guard />
+      <FinancialContextSync />
       <LithiumScenarioGuard />
       <PdfV3Branding />
       {children}
