@@ -116,23 +116,30 @@ function transformV3Text(instance: jsPDF, input: string | string[]): string | st
   return input;
 }
 
-function drawWatermark(instance: jsPDF, page: number) {
-  instance.setPage(page);
+function drawWatermark(instance: jsPDF) {
   instance.setFont('helvetica', 'bold');
-  instance.setFontSize(44);
-  instance.setTextColor(235, 235, 232);
-  instance.text('BIP', PAGE_W / 2, PAGE_H / 2 + 3, {
+  instance.setFontSize(108);
+  instance.setTextColor(242, 242, 238);
+  instance.text('BIP', PAGE_W / 2, PAGE_H / 2 + 7, {
     align: 'center',
     angle: 35,
   });
 
   instance.setFont('helvetica', 'bold');
-  instance.setFontSize(8.5);
-  instance.setTextColor(226, 226, 222);
-  instance.text('DRRKOBE.COM', PAGE_W / 2, PAGE_H / 2 + 17, {
+  instance.setFontSize(15);
+  instance.setTextColor(240, 240, 236);
+  instance.text('DRRKOBE.COM', PAGE_W / 2, PAGE_H / 2 + 30, {
     align: 'center',
     angle: 35,
   });
+}
+
+function isFullPageBackground(x: number, y: number, width: number, height: number, style?: string | null): boolean {
+  return Math.abs(x) < 0.01
+    && Math.abs(y) < 0.01
+    && Math.abs(width - PAGE_W) < 0.05
+    && Math.abs(height - PAGE_H) < 0.05
+    && style === 'F';
 }
 
 function overwritePageNumber(instance: jsPDF, page: number) {
@@ -248,7 +255,6 @@ function drawPageNine(instance: jsPDF) {
   instance.setFontSize(5.7);
   instance.setTextColor(...GREY);
   instance.text('DRRKOBE BIP • Individual technical assessment & consultation', MARGIN, 276);
-  instance.text(`${TOTAL_PAGES} / ${TOTAL_PAGES}`, SAFE_RIGHT, PAGE_H - 10, { align: 'right' });
 }
 
 function finalizeV3Document(instance: JsPdfInstanceWithV3) {
@@ -260,7 +266,6 @@ function finalizeV3Document(instance: JsPdfInstanceWithV3) {
 
   const total = Number((instance as any).getNumberOfPages?.() || TOTAL_PAGES);
   for (let page = 1; page <= total; page += 1) {
-    drawWatermark(instance, page);
     overwritePageNumber(instance, page);
   }
 
@@ -279,7 +284,23 @@ if (!api.__drrkobePdfV3Registered) {
       instance.__drrkobePdfV3Patched = true;
 
       const originalText = instance.text;
+      const originalRect = instance.rect;
       const originalSave = (instance as any).save.bind(instance);
+      const watermarkedPages = new Set<number>();
+
+      instance.rect = ((x: number, y: number, width: number, height: number, style?: string | null) => {
+        const result = (originalRect as any).call(instance, x, y, width, height, style);
+
+        if (isFullPageBackground(x, y, width, height, style)) {
+          const page = currentPage(instance);
+          if (!watermarkedPages.has(page)) {
+            drawWatermark(instance);
+            watermarkedPages.add(page);
+          }
+        }
+
+        return result;
+      }) as jsPDF['rect'];
 
       instance.text = ((text: string | string[], ...args: unknown[]) => {
         const next = transformV3Text(instance, text);
