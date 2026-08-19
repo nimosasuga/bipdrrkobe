@@ -64,67 +64,91 @@ function validateStep7() {
   const section = sectionByTitle('Lead Acid vs Lithium-ion');
   if (!section) return;
 
-  const replacements: Record<string, [string, string]> = {
+  const title = section.querySelector('h1 span');
+  setText(title, 'Masalah Lead Acid vs Keunggulan Lithium-ion');
+
+  const table = section.querySelector('table');
+  if (!table) return;
+
+  const headers = table.querySelectorAll<HTMLTableCellElement>('thead th');
+  if (headers.length >= 3) {
+    setText(headers[0], 'MASALAH / KEBUTUHAN OPERASI');
+    setText(headers[1], 'KONDISI LEAD ACID SAAT INI');
+    setText(headers[2], 'BAGAIMANA LITHIUM-ION MEMBANTU');
+  }
+
+  const replacements: Record<string, [string, string, string]> = {
     'Charging Time': [
-      'Mengikuti siklus pengisian dan recovery sesuai spesifikasi battery/charger.',
-      'Pengisian saat jeda dapat dievaluasi bila battery, charger, BMS, dan prosedur mendukung.',
+      'Charging lama / charging window sempit',
+      'Siklus pengisian dan recovery Lead Acid perlu direncanakan agar unit siap kembali digunakan.',
+      'Lithium-ion dapat mendukung pengisian yang lebih fleksibel dan opportunity charging bila battery, charger, BMS, serta unit kompatibel.',
     ],
     'Lifespan (cycles)': [
-      'Dipengaruhi duty cycle, depth of discharge, temperatur, charging, dan disiplin perawatan.',
-      'Dipengaruhi chemistry, BMS, duty cycle, temperatur, charging, dan batas operasi pabrikan.',
+      'Daya makin sulit konsisten seiring kondisi battery menurun',
+      'Kinerja Lead Acid dipengaruhi umur, depth of discharge, charging, temperatur, dan disiplin perawatan.',
+      'BMS pada Lithium-ion membantu mengelola charging dan discharging. Kapasitas, duty cycle, temperatur, dan batas operasi tetap harus diverifikasi.',
     ],
     Maintenance: [
-      'Perlu pemeriksaan elektrolit/air, terminal, kebersihan, dan equalizing sesuai kebutuhan.',
-      'Tidak menggunakan watering; tetap perlu pemeriksaan BMS, konektor, charger, dan temperatur.',
+      'Watering, equalizing, dan routine battery care',
+      'Lead Acid memerlukan pemeriksaan elektrolit/air, terminal, kebersihan, dan equalizing sesuai kebutuhan.',
+      'Lithium-ion tidak membutuhkan watering atau equalizing. Pemeriksaan beralih ke BMS, konektor, charger, temperatur, dan kondisi fisik.',
     ],
     'Energy Efficiency': [
-      'Konsumsi dan efisiensi harus dibuktikan dari charger serta pengukuran aktual di site.',
-      'Potensi efisiensi harus divalidasi dari spesifikasi teknis dan pengukuran aktual di site.',
+      'Waktu operasi terserap proses charging',
+      'Availability dapat terpengaruh ketika kebutuhan charging dan recovery berbenturan dengan jam operasi.',
+      'Strategi charging Lithium-ion yang lebih fleksibel dapat membantu menjaga availability. Dampak aktual tetap perlu dibuktikan dari data site.',
     ],
     'Downtime Risk': [
-      'Dipengaruhi kondisi battery, charging window, rotasi battery, charger, dan pola kerja.',
-      'Dipengaruhi kapasitas, kompatibilitas, charging window, BMS, charger, dan pola kerja.',
+      'Downtime terkait battery / charging',
+      'Battery lemah, charging window, atau kebutuhan maintenance dapat membuat unit tidak siap saat dibutuhkan.',
+      'Lithium-ion dapat mengurangi sumber downtime yang memang berasal dari watering, equalizing, dan keterbatasan charging. Penyebab dari unit, charger, atau instalasi tetap harus diperiksa.',
     ],
     'Opportunity Charging': [
-      'Hanya dilakukan bila diizinkan oleh spesifikasi battery, charger, dan prosedur site.',
-      'Dapat menjadi opsi bila diizinkan oleh spesifikasi battery, charger, BMS, dan prosedur site.',
+      'Operasi multi-shift membutuhkan charging yang lebih fleksibel',
+      'Lead Acid membutuhkan disiplin charging dan recovery sehingga charging window harus dijaga.',
+      'Opportunity charging dapat menjadi keunggulan Lithium-ion untuk operasi multi-shift bila diizinkan oleh spesifikasi battery, charger, BMS, dan prosedur site.',
     ],
     'Safety / Emission': [
-      'Perlu pengendalian ventilasi, elektrolit/asam, gas saat charging, dan PPE sesuai prosedur site.',
-      'Perlu pengendalian BMS, temperatur, charger, konektor, dan prosedur keselamatan sesuai site.',
+      'Penanganan elektrolit, watering, dan area charging',
+      'Lead Acid memerlukan pengendalian elektrolit/asam, gas saat charging, ventilasi, kebersihan, dan PPE sesuai prosedur site.',
+      'Lithium-ion menghilangkan watering dan penanganan elektrolit rutin. Keselamatan tetap bergantung pada BMS, temperatur, charger, konektor, instalasi, dan prosedur site.',
     ],
   };
 
-  section.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach((row) => {
+  table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach((row) => {
     const cells = row.querySelectorAll<HTMLTableCellElement>('td');
     if (cells.length < 3) return;
 
     const replacement = replacements[cells[0].textContent?.trim() || ''];
     if (!replacement) return;
 
-    setText(cells[1], replacement[0]);
-    setText(cells[2], replacement[1]);
+    setText(cells[0], replacement[0]);
+    setText(cells[1], replacement[1]);
+    setText(cells[2], replacement[2]);
   });
 
-  const lithiumHeader = Array.from(section.querySelectorAll<HTMLElement>('th')).find(
-    (node) => node.textContent?.includes('LI-ION'),
-  );
-  setText(lithiumHeader, 'LI-ION UNTUK DIEVALUASI');
+  const wrapper = table.parentElement;
+  if (wrapper && !section.querySelector('[data-lithium-selling-context="1"]')) {
+    const intro = document.createElement('div');
+    intro.dataset.lithiumSellingContext = '1';
+    intro.className = 'mb-5 rounded-[20px] bg-[#0A0A0A] p-5 text-white';
+    intro.innerHTML = '<div class="font-mono text-[10px] font-bold tracking-[.14em] text-[#FFCC00]">WHY LITHIUM-ION</div><div class="mt-2 text-xl font-black">Bukan sekadar membandingkan teknologi. Lihat masalah Lead Acid mana yang dapat dikurangi atau dihilangkan dengan Lithium-ion.</div><p class="mt-3 text-sm leading-6 text-zinc-300">Fokus utama: charging window, watering dan equalizing, kebutuhan maintenance battery, serta availability pada operasi multi-shift. Gangguan electrical, hydraulic, drive, charger, atau temperatur tidak dianggap otomatis selesai hanya karena battery diganti.</p>';
+    wrapper.insertAdjacentElement('beforebegin', intro);
+  }
 
-  // IMPORTANT: only mutate the dedicated note card.
-  // The previous implementation matched every ancestor <div> whose textContent
-  // happened to contain the note, which could delete the whole comparison table
-  // and navigation buttons because setting textContent removes all descendants.
   const comparisonNote = Array.from(section.querySelectorAll<HTMLElement>('div')).find((node) => {
     const className = typeof node.className === 'string' ? node.className : '';
-    return className.includes('border-dashed')
-      && node.textContent?.includes('Perbandingan ini digunakan sebagai bahan evaluasi teknis dan operasional.');
+    return className.includes('border-dashed');
   });
 
   setText(
     comparisonNote,
-    'Perbandingan bersifat kualitatif. Nilai cycle life, charging time, efisiensi energi, temperatur, kompatibilitas, dan keselamatan harus diverifikasi terhadap datasheet battery/charger serta kondisi site. Tidak ada harga yang ditampilkan.',
+    'Lithium-ion diposisikan sebagai solusi untuk pain point Lead Acid yang memang terkait dengan charging strategy, watering/equalizing, routine battery maintenance, dan kebutuhan availability. Kesesuaian battery, charger, BMS, dimensi, konektor, kapasitas, serta duty cycle tetap harus diverifikasi sebelum konversi.',
   );
+
+  const navButtons = section.querySelectorAll<HTMLButtonElement>('button');
+  const nextButton = Array.from(navButtons).find((button) => button.textContent?.includes('Hitung Potensi Efisiensi'));
+  setText(nextButton, 'Validasi Kesesuaian Lithium-ion →');
 }
 
 function validateStep8() {
