@@ -4,6 +4,7 @@ import DiagnosisFunnelTracker from '../components/diagnosis-funnel-tracker';
 import BuildRevisionGuard from '../components/build-revision-guard';
 import PdfFinalBoundsGuard from '../components/pdf-final-bounds-guard';
 import PdfTextSafety from '../components/pdf-text-safety';
+import { getBuildRevision } from '../lib/server-build-revision';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -40,11 +41,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const buildRevision = getBuildRevision();
+
   return (
     <html lang="id">
       <body>
-        <BuildRevisionGuard />
-        <PdfFinalBoundsGuard />
+        <BuildRevisionGuard initialRevision={buildRevision} />
+        <PdfFinalBoundsGuard revision={buildRevision} />
         <PdfTextSafety />
         <DiagnosisFunnelTracker />
         <SiteHeader />
