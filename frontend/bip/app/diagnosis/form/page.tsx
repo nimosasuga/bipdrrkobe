@@ -1,1 +1,5 @@
-export { default } from './seven-step-page';
+import SevenStepDiagnosisPage from './seven-step-page';
+
+export default function DiagnosisFormPage() {
+  return <SevenStepDiagnosisPage />;
+}
