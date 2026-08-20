@@ -8,7 +8,8 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN printf '%s-%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" "$(cat /proc/sys/kernel/random/uuid | cut -c1-8)" > /app/build-revision.txt \
+    && npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -22,6 +23,7 @@ RUN addgroup --system --gid 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/build-revision.txt ./build-revision.txt
 
 USER nextjs
 EXPOSE 3000
