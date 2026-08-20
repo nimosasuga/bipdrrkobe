@@ -1,11 +1,12 @@
 'use client';
 
 import { jsPDF } from 'jspdf';
-import { PDF_RENDERER_REVISION } from '../lib/build-revision';
 
 const PAGE_W = 210;
 const MARGIN = 18;
 const SAFE_RIGHT = PAGE_W - MARGIN;
+
+let activeRendererRevision = 'unknown';
 
 type JsPdfApiWithBounds = typeof jsPDF.API & {
   __drrkobePdfFinalBoundsRegistered?: boolean;
@@ -17,6 +18,10 @@ type JsPdfInstanceWithBounds = jsPDF & {
 
 type TextOptions = {
   align?: 'left' | 'center' | 'right' | 'justify';
+};
+
+type PdfFinalBoundsGuardProps = {
+  revision: string;
 };
 
 function currentPage(instance: jsPDF): number {
@@ -116,9 +121,9 @@ if (!api.__drrkobePdfFinalBoundsRegistered) {
 
       try {
         (instance as any).setProperties?.({
-          creator: `DRRKOBE BIP ${PDF_RENDERER_REVISION}`,
-          subject: `DRRKOBE BIP PDF renderer ${PDF_RENDERER_REVISION}`,
-          keywords: PDF_RENDERER_REVISION,
+          creator: `DRRKOBE BIP ${activeRendererRevision}`,
+          subject: `DRRKOBE BIP PDF renderer ${activeRendererRevision}`,
+          keywords: `DRRKOBE,BIP,${activeRendererRevision}`,
         });
       } catch {
         // Metadata is diagnostic only; PDF generation must never fail because of it.
@@ -133,6 +138,7 @@ if (!api.__drrkobePdfFinalBoundsRegistered) {
   ]);
 }
 
-export default function PdfFinalBoundsGuard() {
+export default function PdfFinalBoundsGuard({ revision }: PdfFinalBoundsGuardProps) {
+  activeRendererRevision = revision || 'unknown';
   return null;
 }
