@@ -53,6 +53,24 @@ function lifetimeNarrative(age: number | null): string {
   return `LIFETIME ADVANTAGE — ${ageText}Lithium-ion menawarkan potensi cycle life yang lebih panjang dan performa yang lebih konsisten untuk operasi intensif. Nilai umur pakai aktual tetap bergantung pada duty cycle, temperatur, depth of discharge, kapasitas, dan strategi charging. Validasi spesifikasi melalui Technical Assessment DRRKOBE sebelum keputusan investasi.`;
 }
 
+function sanitizeOperationalChargerFaultCopy(text: string): string {
+  return text
+    .replace(/Pengisian Battery Terlalu Lama \/ Charger Bermasalah/gi, 'Pengisian Battery Terlalu Lama')
+    .replace(/Forklift Sering Berhenti Karena Battery \/ Charger/gi, 'Forklift Sering Berhenti Karena Battery / Proses Pengisian')
+    .replace(/battery\s*\/\s*charger/gi, 'battery / proses pengisian')
+    .replace(/battery atau charger/gi, 'battery atau proses pengisian')
+    .replace(/kapasitas battery, kondisi charger, dan charging window/gi, 'kapasitas battery dan charging window')
+    .replace(/indikasi gangguan siklus pengisian atau performa charger/gi, 'charging window perlu diverifikasi terhadap kebutuhan operasi')
+    .replace(/gangguan pada charger\s*:\s*[^.,;]*/gi, '')
+    .replace(/charger\s+(bermasalah|error|mengalami gangguan)/gi, 'charging window belum tervalidasi')
+    .replace(/(gangguan|error)\s+(pada\s+)?charger/gi, 'charging window yang belum tervalidasi')
+    .replace(/performa charger/gi, 'charging window')
+    .replace(/verifikasi charger/gi, 'verifikasi charging window')
+    .replace(/uji charger dan kapasitas battery/gi, 'verifikasi kapasitas battery dan charging window')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function transformPositioningText(instance: jsPDF, input: string | string[]): string | string[] {
   const page = currentPage(instance);
   const joined = normalize(input);
@@ -71,20 +89,12 @@ function transformPositioningText(instance: jsPDF, input: string | string[]): st
     }
   }
 
-  // Charger fault/error dikeluarkan dari scope diagnosis. Charging duration/window
-  // tetap dipertahankan sebagai data operasional dan bahan compatibility assessment.
-  if (/^Gangguan pada charger:/i.test(joined)) return '';
-  if (joined === 'Pengisian Battery Terlalu Lama / Charger Bermasalah') {
-    return 'Pengisian Battery Terlalu Lama';
-  }
-  if (joined === 'Forklift Sering Berhenti Karena Battery / Charger') {
-    return 'Forklift Sering Berhenti Karena Battery / Proses Pengisian';
-  }
-  if (/^Indikasi gangguan siklus pengisian atau performa charger$/i.test(joined)) {
-    return 'Charging window perlu diverifikasi terhadap kebutuhan operasi';
-  }
-  if (/^Uji charger dan kapasitas battery;/i.test(joined)) {
-    return joined.replace(/^Uji charger dan kapasitas battery;/i, 'Verifikasi kapasitas battery dan charging window;');
+  // Halaman diagnosis/operasional tidak mendiagnosis fault charger. Charger hanya
+  // kembali muncul pada halaman evaluasi sebagai compatibility item Technical Assessment.
+  if (page <= 5) {
+    if (/^Gangguan pada charger:/i.test(joined)) return '';
+    const sanitized = sanitizeOperationalChargerFaultCopy(joined);
+    if (sanitized !== joined) return sanitized;
   }
 
   if (page === 6) {
