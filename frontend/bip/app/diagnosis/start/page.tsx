@@ -1,15 +1,13 @@
 import Link from 'next/link';
 
 const steps = [
-  'Pilih Model',
-  'Konfigurasi Lead Acid',
-  'Pilih Multi-Issue',
-  'Detail Operasional',
-  'Aggregated Diagnosis',
-  'Dampak Aggregated',
-  'Lead Acid vs Li-ion',
-  'ROI Potensi Saving',
-  'Rekomendasi DRRKOBE',
+  'Unit & Operation Context',
+  'Pilih Gejala Operasional',
+  'Lengkapi Detail Kondisi',
+  'AI Diagnosis Result',
+  'Lead Acid vs Lithium-ion',
+  'Business Impact & Cost Context',
+  'Technical Assessment DRRKOBE',
 ];
 
 export default function DiagnosisStartPage() {
@@ -27,11 +25,11 @@ export default function DiagnosisStartPage() {
 
       <section className="mx-auto grid max-w-[1280px] gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:py-20">
         <div>
-          <div className="font-mono text-[11px] font-semibold tracking-[.14em] text-zinc-500">DRRKOBE DIAGNOSTIC ENGINE • 9-STEP JOURNEY</div>
-          <h1 className="mt-5 max-w-3xl text-5xl font-black tracking-[-.055em] sm:text-6xl">Diagnosis Lead Acid yang membaca masalah secara <span className="bg-[linear-gradient(transparent_62%,rgba(255,204,0,.55)_62%)]">aggregated.</span></h1>
-          <p className="mt-6 max-w-2xl text-base leading-7 text-zinc-600">Health Score dihitung deterministic engine. AI digunakan untuk memperkaya interpretasi lintas masalah tanpa mengubah skor utama.</p>
+          <div className="font-mono text-[11px] font-semibold tracking-[.14em] text-zinc-500">DRRKOBE DIAGNOSTIC ENGINE • 7-STEP JOURNEY</div>
+          <h1 className="mt-5 max-w-3xl text-5xl font-black tracking-[-.055em] sm:text-6xl">Diagnosis Lead Acid yang lebih ringkas di awal, tetapi tetap kuat untuk <span className="bg-[linear-gradient(transparent_62%,rgba(255,204,0,.55)_62%)]">technical assessment.</span></h1>
+          <p className="mt-6 max-w-2xl text-base leading-7 text-zinc-600">Model forklift, jam operasi, dan shift digabung pada layar pertama. Health Score tetap dihitung deterministic engine; AI memperkaya interpretasi tanpa mengubah skor utama.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/diagnosis/form" className="rounded-full bg-[#0A0A0A] px-7 py-4 text-sm font-black text-white">Mulai 9-Step Diagnosis →</Link>
+            <Link href="/diagnosis/form" className="rounded-full bg-[#0A0A0A] px-7 py-4 text-sm font-black text-white">Mulai 7-Step Diagnosis →</Link>
             <div className="rounded-full border border-zinc-200 bg-white px-5 py-4 text-sm font-bold">No Price • Technical Insight Only</div>
           </div>
         </div>
@@ -41,7 +39,7 @@ export default function DiagnosisStartPage() {
           <div className="mt-6 space-y-2">
             {steps.map((label, index) => (
               <div key={label} className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-black ${index < 4 ? 'bg-[#FFCC00] text-black' : 'bg-white/10 text-white'}`}>{index + 1}</div>
+                <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-black ${index === 3 ? 'bg-[#FFCC00] text-black' : 'bg-white/10 text-white'}`}>{index + 1}</div>
                 <div className="text-sm font-bold">{label}</div>
               </div>
             ))}
