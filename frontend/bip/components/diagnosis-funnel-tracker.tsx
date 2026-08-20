@@ -30,8 +30,10 @@ export default function DiagnosisFunnelTracker() {
       const target = event.target;
       if (!(target instanceof HTMLSelectElement) || !target.value) return;
 
-      const selects = Array.from(document.querySelectorAll('select'));
-      if (selects[1] !== target) return;
+      // Do not depend on select ordering: Step 1 contains industry, brand, and model.
+      // The model select is identified by its own rendered field label.
+      const fieldLabel = target.previousElementSibling?.textContent?.trim() ?? '';
+      if (fieldLabel !== 'Model Forklift') return;
 
       void trackFunnelEvent('model_selected', {
         metadata: { model_id: target.value, visible_step: 1, flow_version: '7-step' },
