@@ -587,9 +587,27 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   const chargingKnown = !isExplicitlyUnknown(data.chargingDurationDetail);
   const wateringKnown = !isExplicitlyUnknown(data.wateringFrequencyDetail);
 
-  const monthlyDowntimeCost = downtimeKnown ? (data.downtimeCostPerHour || 0) * data.downtimeHoursPerMonth * data.fleetSize : 0;
-  const monthlyMaintenanceCost = wateringKnown ? (data.maintenanceCostPerUnitMonth || 0) * data.fleetSize : 0;
-  const monthlyChargingCost = chargingKnown ? (data.chargingCostPerUnitMonth || 0) * data.fleetSize : 0;
+  // Nilai finansial yang benar-benar diisi customer tidak boleh bergantung pada
+  // apakah detail operasional lain diketahui. Charging dan maintenance sudah berupa
+  // nominal per unit per bulan, sehingga sumber kebenarannya adalah input customer.
+  const downtimeCostPerHour = Math.max(0, Number(data.downtimeCostPerHour) || 0);
+  const maintenanceCostPerUnitMonth = Math.max(0, Number(data.maintenanceCostPerUnitMonth) || 0);
+  const chargingCostPerUnitMonth = Math.max(0, Number(data.chargingCostPerUnitMonth) || 0);
+  const fleetSize = Math.max(1, Number(data.fleetSize) || 1);
+
+  const downtimeCostProvided = downtimeCostPerHour > 0;
+  const maintenanceCostProvided = maintenanceCostPerUnitMonth > 0;
+  const chargingCostProvided = chargingCostPerUnitMonth > 0;
+
+  const monthlyDowntimeCost = downtimeKnown && downtimeCostProvided
+    ? downtimeCostPerHour * data.downtimeHoursPerMonth * fleetSize
+    : 0;
+  const monthlyMaintenanceCost = maintenanceCostProvided
+    ? maintenanceCostPerUnitMonth * fleetSize
+    : 0;
+  const monthlyChargingCost = chargingCostProvided
+    ? chargingCostPerUnitMonth * fleetSize
+    : 0;
   const annualOperatingCost = (monthlyDowntimeCost + monthlyMaintenanceCost + monthlyChargingCost) * 12;
   const annualSavingScenario = (
     monthlyDowntimeCost * (data.downtimeReductionPercent / 100) +
@@ -774,9 +792,33 @@ export function downloadAssessmentPdf(data: AssessmentReportData) {
   y = sectionTitle(doc, '04 / Nilai gangguan bagi perusahaan', 'Berapa besar potensi beban biayanya?', 'Nominal hanya dihitung dari data biaya yang diberikan perusahaan. Bila biaya internal atau data operasi belum diketahui, laporan tidak membuat asumsi Rupiah.');
 
   if (monetaryInputsAvailable) {
-    metricCard(doc, MARGIN, y, 54, 'Waktu henti / bulan', downtimeKnown ? rupiah(monthlyDowntimeCost) : 'Belum diketahui', downtimeKnown ? `${data.fleetSize} unit x ${data.downtimeHoursPerMonth} jam` : 'Menunggu data waktu henti');
-    metricCard(doc, MARGIN + 60, y, 54, 'Perawatan / bulan', wateringKnown ? rupiah(monthlyMaintenanceCost) : 'Belum diketahui', wateringKnown ? 'Berdasarkan data perusahaan' : 'Menunggu data perawatan');
-    metricCard(doc, MARGIN + 120, y, 54, 'Pengisian / bulan', chargingKnown ? rupiah(monthlyChargingCost) : 'Belum diketahui', chargingKnown ? 'Berdasarkan data perusahaan' : 'Menunggu data pengisian');
+    metricCard(
+      doc,
+      MARGIN,
+      y,
+      54,
+      'Waktu henti / bulan',
+      downtimeKnown && downtimeCostProvided ? rupiah(monthlyDowntimeCost) : 'Belum diketahui',
+      downtimeKnown && downtimeCostProvided ? `${fleetSize} unit x ${data.downtimeHoursPerMonth} jam` : 'Menunggu data waktu henti dan biaya/jam',
+    );
+    metricCard(
+      doc,
+      MARGIN + 60,
+      y,
+      54,
+      'Perawatan / bulan',
+      maintenanceCostProvided ? rupiah(monthlyMaintenanceCost) : 'Belum diketahui',
+      maintenanceCostProvided ? 'Berdasarkan data perusahaan' : 'Menunggu biaya perawatan',
+    );
+    metricCard(
+      doc,
+      MARGIN + 120,
+      y,
+      54,
+      'Pengisian / bulan',
+      chargingCostProvided ? rupiah(monthlyChargingCost) : 'Belum diketahui',
+      chargingCostProvided ? 'Berdasarkan data perusahaan' : 'Menunggu biaya pengisian',
+    );
 
     y += 53;
     doc.setFillColor(...BLACK);
