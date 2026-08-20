@@ -37,7 +37,7 @@ test('generated PDFs carry a renderer revision for forensic verification', () =>
 test('stale browser tabs detect a newer deployed frontend and force a reload', () => {
   assert.match(buildGuard, /\/api\/build-revision\?t=\$\{Date\.now\(\)\}/);
   assert.match(buildGuard, /cache: 'no-store'/);
-  assert.match(buildGuard, /serverRevision !== BUILD_REVISION/);
+  assert.match(buildGuard, /serverRevision === BUILD_REVISION/);
   assert.match(buildGuard, /window\.location\.replace/);
   assert.match(revisionRoute, /dynamic = 'force-dynamic'/);
   assert.match(revisionRoute, /no-store, no-cache, must-revalidate/);
