@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 
 const FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_context';
+const DIRECT_FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_direct';
 const LITHIUM_SCENARIO_KEY = 'drrkobe_bip_lithium_scenario';
 
 // Existing BIP scenario factors. These are applied only to the customer's
@@ -19,11 +20,40 @@ type FinancialContext = {
   fleetSize: number;
 };
 
+type DirectFinancialContext = Partial<Pick<
+  FinancialContext,
+  'downtimeCostPerHour' | 'maintenanceCostPerUnitMonth' | 'chargingCostPerUnitMonth' | 'fleetSize'
+>>;
+
 type LithiumScenario = {
   downtimeHoursPerUnitMonth: number | null;
   maintenanceCostPerUnitMonth: number | null;
   chargingCostPerUnitMonth: number | null;
 };
+
+function readDirectContext(): DirectFinancialContext {
+  try {
+    const raw = window.sessionStorage.getItem(DIRECT_FINANCIAL_CONTEXT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as DirectFinancialContext;
+    return {
+      downtimeCostPerHour: typeof parsed.downtimeCostPerHour === 'number'
+        ? Math.max(0, parsed.downtimeCostPerHour)
+        : undefined,
+      maintenanceCostPerUnitMonth: typeof parsed.maintenanceCostPerUnitMonth === 'number'
+        ? Math.max(0, parsed.maintenanceCostPerUnitMonth)
+        : undefined,
+      chargingCostPerUnitMonth: typeof parsed.chargingCostPerUnitMonth === 'number'
+        ? Math.max(0, parsed.chargingCostPerUnitMonth)
+        : undefined,
+      fleetSize: typeof parsed.fleetSize === 'number'
+        ? Math.max(1, parsed.fleetSize)
+        : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
 
 function readFinancialContext(): FinancialContext {
   const fallback: FinancialContext = {
@@ -34,23 +64,28 @@ function readFinancialContext(): FinancialContext {
     fleetSize: 1,
   };
 
+  let parsed: Partial<FinancialContext> = {};
   try {
     const raw = window.sessionStorage.getItem(FINANCIAL_CONTEXT_KEY);
-    if (!raw) return fallback;
-
-    const parsed = JSON.parse(raw) as Partial<FinancialContext>;
-    return {
-      actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
-        ? Math.max(0, parsed.actualDowntimeHoursPerUnitMonth)
-        : null,
-      downtimeCostPerHour: Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
-      maintenanceCostPerUnitMonth: Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
-      chargingCostPerUnitMonth: Math.max(0, Number(parsed.chargingCostPerUnitMonth) || 0),
-      fleetSize: Math.max(1, Number(parsed.fleetSize) || 1),
-    };
+    if (raw) parsed = JSON.parse(raw) as Partial<FinancialContext>;
   } catch {
-    return fallback;
+    parsed = {};
   }
+
+  const direct = readDirectContext();
+  return {
+    actualDowntimeHoursPerUnitMonth: typeof parsed.actualDowntimeHoursPerUnitMonth === 'number'
+      ? Math.max(0, parsed.actualDowntimeHoursPerUnitMonth)
+      : null,
+    downtimeCostPerHour: direct.downtimeCostPerHour
+      ?? Math.max(0, Number(parsed.downtimeCostPerHour) || fallback.downtimeCostPerHour),
+    maintenanceCostPerUnitMonth: direct.maintenanceCostPerUnitMonth
+      ?? Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || fallback.maintenanceCostPerUnitMonth),
+    chargingCostPerUnitMonth: direct.chargingCostPerUnitMonth
+      ?? Math.max(0, Number(parsed.chargingCostPerUnitMonth) || fallback.chargingCostPerUnitMonth),
+    fleetSize: direct.fleetSize
+      ?? Math.max(1, Number(parsed.fleetSize) || fallback.fleetSize),
+  };
 }
 
 function buildLithiumScenario(context: FinancialContext): LithiumScenario {
