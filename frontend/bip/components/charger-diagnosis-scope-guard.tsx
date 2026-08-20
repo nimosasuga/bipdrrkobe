@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 
 const CHARGER_ERROR_QUESTION = 'Seberapa sering charger menampilkan kode gangguan?';
-const CHARGER_FAULT_PATTERN = /(charger\s*(bermasalah|error|gangguan))|((gangguan|error)\s+.*charger)|(performa\s+charger)/i;
+const CHARGER_FAULT_PATTERN = /(charger\s*(bermasalah|error|gangguan|failure|fault|issue|problem))|((gangguan|error|failure|fault)\s+.*charger)|(performa\s+charger)/i;
 
 const TEXT_REPLACEMENTS: Record<string, string> = {
   'Pengisian Battery Terlalu Lama / Charger Bermasalah': 'Pengisian Battery Terlalu Lama',
