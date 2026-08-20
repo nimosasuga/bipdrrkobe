@@ -30,6 +30,8 @@ const CHARGING_LABELS = [
   'biaya air battery perbulan',
 ];
 
+type FinancialMode = 'unknown' | 'partial' | 'full' | 'undetected';
+
 type FinancialContext = {
   actualDowntimeHoursPerUnitMonth: number | null;
   downtimeCostPerHour: number;
@@ -64,6 +66,24 @@ function stepOne(): HTMLElement | null {
     const title = section.querySelector('h1')?.textContent ?? '';
     return title.includes('Pilih Bidang Industri & Model Forklift');
   }) ?? null;
+}
+
+function activeFinancialMode(section: HTMLElement): FinancialMode {
+  const buttons = Array.from(section.querySelectorAll<HTMLButtonElement>('button'));
+  const activeButton = buttons.find((button) => {
+    const className = typeof button.className === 'string' ? button.className : '';
+    return className.includes('bg-[#0A0A0A]') && (
+      button.textContent?.includes('Saya tidak tahu biaya internal')
+      || button.textContent?.includes('Saya tahu sebagian biaya')
+      || button.textContent?.includes('Saya memiliki data lengkap')
+    );
+  });
+
+  const text = activeButton?.textContent ?? '';
+  if (text.includes('Saya tidak tahu biaya internal')) return 'unknown';
+  if (text.includes('Saya tahu sebagian biaya')) return 'partial';
+  if (text.includes('Saya memiliki data lengkap')) return 'full';
+  return 'undetected';
 }
 
 function readDirectContext(): DirectFinancialContext {
@@ -161,10 +181,7 @@ function inputNumberByLabels(section: HTMLElement, aliases: string[]): number | 
   if (!input) return null;
 
   const raw = input.value.trim();
-  // Jangan menimpa nilai yang sudah dikunci dengan 0 hanya karena controlled input
-  // sedang transient/blank ketika React melakukan render ulang.
   if (raw === '') return null;
-
   return Math.max(0, Number(raw) || 0);
 }
 
@@ -205,22 +222,48 @@ function persistContext(context: FinancialContext) {
   writeLithiumScenario(context);
 }
 
+function directPatchForMode(
+  mode: FinancialMode,
+  nextFleetSize: number,
+  downtime: number | null,
+  maintenance: number | null,
+  charging: number | null,
+): DirectFinancialContext {
+  const patch: DirectFinancialContext = { fleetSize: nextFleetSize };
+
+  if (mode === 'unknown') {
+    patch.downtimeCostPerHour = 0;
+    patch.maintenanceCostPerUnitMonth = 0;
+    patch.chargingCostPerUnitMonth = 0;
+    return patch;
+  }
+
+  if (mode === 'partial') {
+    patch.maintenanceCostPerUnitMonth = 0;
+    patch.chargingCostPerUnitMonth = 0;
+    if (downtime !== null) patch.downtimeCostPerHour = downtime;
+    return patch;
+  }
+
+  if (downtime !== null) patch.downtimeCostPerHour = downtime;
+  if (maintenance !== null) patch.maintenanceCostPerUnitMonth = maintenance;
+  if (charging !== null) patch.chargingCostPerUnitMonth = charging;
+  return patch;
+}
+
 function syncNow() {
   const section = stepEight();
   if (!section) return;
 
   const existing = readExisting();
+  const mode = activeFinancialMode(section);
   const downtime = inputNumberByLabels(section, DOWNTIME_LABELS);
   const maintenance = inputNumberByLabels(section, MAINTENANCE_LABELS);
   const charging = inputNumberByLabels(section, CHARGING_LABELS);
   const stableDowntime = readStableDowntime();
   const nextFleetSize = fleetSize(section, existing.fleetSize);
 
-  const directPatch: DirectFinancialContext = { fleetSize: nextFleetSize };
-  if (downtime !== null) directPatch.downtimeCostPerHour = downtime;
-  if (maintenance !== null) directPatch.maintenanceCostPerUnitMonth = maintenance;
-  if (charging !== null) directPatch.chargingCostPerUnitMonth = charging;
-  writeDirectContext(directPatch);
+  writeDirectContext(directPatchForMode(mode, nextFleetSize, downtime, maintenance, charging));
 
   const direct = readDirectContext();
   const context: FinancialContext = {
@@ -245,9 +288,7 @@ function syncDirectInput(target: EventTarget | null) {
   if (!labelText) return;
 
   const raw = input.value.trim();
-  if (raw === '') return;
-
-  const value = Math.max(0, Number(raw) || 0);
+  const value = raw === '' ? 0 : Math.max(0, Number(raw) || 0);
   const context = readExisting();
   const stableDowntime = readStableDowntime();
   const nextFleetSize = fleetSize(section, context.fleetSize);
@@ -270,8 +311,7 @@ function syncDirectInput(target: EventTarget | null) {
     return;
   }
 
-  // Lock langsung dari event input. Nilai yang benar-benar diketik user tidak boleh
-  // hilang karena MutationObserver, controlled-input rerender, atau guard lain.
+  // Event input adalah sumber kebenaran: angka positif, nol, maupun field yang sengaja dikosongkan.
   writeDirectContext(directPatch);
   persistContext(context);
 }
