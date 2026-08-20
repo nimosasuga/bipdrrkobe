@@ -25,6 +25,7 @@ type DirectFinancialContext = Partial<Pick<
 type PdfLockState = {
   page5Metric: 'downtime' | 'maintenance' | 'charging' | 'total' | null;
   page5ChartRow: 'charging' | null;
+  page5FallbackActive: boolean;
   page7Metric: 'lead' | 'lithium' | 'gap' | 'status' | null;
 };
 
@@ -41,7 +42,12 @@ const states = new WeakMap<jsPDF, PdfLockState>();
 function stateFor(instance: jsPDF): PdfLockState {
   let state = states.get(instance);
   if (!state) {
-    state = { page5Metric: null, page5ChartRow: null, page7Metric: null };
+    state = {
+      page5Metric: null,
+      page5ChartRow: null,
+      page5FallbackActive: false,
+      page7Metric: null,
+    };
     states.set(instance, state);
   }
   return state;
@@ -164,7 +170,23 @@ function normalizeInput(input: string | string[]): string {
 }
 
 function isPage5AmountPlaceholder(value: string): boolean {
-  return /^Rp\s/i.test(value) || /^(Belum diketahui|Belum dihitung)$/i.test(value);
+  return /^Rp\s/i.test(value) || /^(Belum diketahui|Belum dihitung|Belum final)$/i.test(value);
+}
+
+function fallbackPage5Label(value: ReturnType<typeof totals>): string {
+  const activeRows = [value.downtime > 0, value.maintenance > 0, value.charging > 0].filter(Boolean).length;
+  if (activeRows === 1 && value.charging > 0) return 'PENGISIAN / BULAN';
+  if (activeRows === 1 && value.maintenance > 0) return 'PERAWATAN / BULAN';
+  if (activeRows === 1 && value.downtime > 0) return 'WAKTU HENTI / BULAN';
+  return 'TOTAL BIAYA OPERASIONAL / BULAN';
+}
+
+function fallbackPage5Amount(value: ReturnType<typeof totals>): number {
+  const label = fallbackPage5Label(value);
+  if (label === 'PENGISIAN / BULAN') return value.charging;
+  if (label === 'PERAWATAN / BULAN') return value.maintenance;
+  if (label === 'WAKTU HENTI / BULAN') return value.downtime;
+  return value.lead;
 }
 
 function transformLockedText(instance: jsPDF, input: string | string[]): string | string[] {
@@ -173,13 +195,11 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
   const state = stateFor(instance);
 
   // LOCK PAGE 4: hanya perbaiki value PENGISIAN DAYA yang terbukti overflow.
-  // Suffix "/ siklus" dihilangkan dari value; konteksnya sudah jelas dari label dan note card.
   if (page === 4 && /\s\/\s*siklus$/i.test(joined) && /jam/i.test(joined)) {
     return joined.replace(/\s*\/\s*siklus$/i, '');
   }
 
   // LOCK PAGE 5: nominal user menjadi sumber kebenaran utama.
-  // Direct financial lock mencegah nilai input terakhir diubah kembali menjadi 0 oleh guard/render lain.
   if (page === 5) {
     if (joined === 'WAKTU HENTI / BULAN') state.page5Metric = 'downtime';
     if (joined === 'PERAWATAN / BULAN') state.page5Metric = 'maintenance';
@@ -187,6 +207,29 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
     if (joined === 'TOTAL BIAYA OPERASIONAL / BULAN') state.page5Metric = 'total';
 
     const value = totals();
+
+    // Generator lama dapat masuk ke blok "menunggu data" saat detail charging = Tidak tahu,
+    // walaupun customer telah memasukkan nominal. Ubah blok itu menjadi hasil nyata.
+    if (joined === 'STATUS DATA BIAYA' && value.lead > 0) {
+      state.page5FallbackActive = true;
+      return fallbackPage5Label(value);
+    }
+
+    if (state.page5FallbackActive && joined === 'Menunggu data biaya perusahaan' && value.lead > 0) {
+      return rupiah(fallbackPage5Amount(value));
+    }
+
+    if (
+      state.page5FallbackActive
+      && joined.startsWith('Tidak mengetahui biaya internal bukan masalah.')
+      && value.lead > 0
+    ) {
+      state.page5FallbackActive = false;
+      if (value.charging > 0) {
+        return `Berdasarkan data perusahaan: ${rupiah(value.context.chargingCostPerUnitMonth)} x ${value.context.fleetSize} unit = ${rupiah(value.charging)} / bulan.`;
+      }
+      return `Berdasarkan data biaya yang diberikan perusahaan. Total teridentifikasi ${rupiah(value.lead)} / bulan.`;
+    }
 
     if (state.page5Metric && isPage5AmountPlaceholder(joined)) {
       const metric = state.page5Metric;
@@ -222,7 +265,6 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
   }
 
   // LOCK PAGE 7: card tetap sama; hanya isi value dibuat aman terhadap box.
-  // Mengembalikan value sebelum pdf-text-safety mengganti string pendek menjadi string panjang.
   if (page === 7) {
     if (joined === 'WAKTU HENTI') state.page7Metric = 'lead';
     if (joined === 'EFISIENSI ENERGI') state.page7Metric = 'lithium';
