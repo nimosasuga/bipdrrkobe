@@ -1,0 +1,36 @@
+name: BIP Regression
+
+on:
+  push:
+    paths:
+      - 'frontend/bip/**'
+      - '.github/workflows/bip-regression.yml'
+  pull_request:
+    paths:
+      - 'frontend/bip/**'
+      - '.github/workflows/bip-regression.yml'
+
+jobs:
+  frontend-regression:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/bip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run Page 5 regression tests
+        run: npm test
+
+      - name: Build Next.js frontend
+        run: npm run build
