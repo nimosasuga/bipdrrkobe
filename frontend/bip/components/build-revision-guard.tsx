@@ -1,14 +1,18 @@
 'use client';
 
 import { useEffect } from 'react';
-import { BUILD_REVISION } from '../lib/build-revision';
+
+type BuildRevisionGuardProps = {
+  initialRevision: string;
+};
 
 const CHECK_INTERVAL_MS = 60_000;
 
-export default function BuildRevisionGuard() {
+export default function BuildRevisionGuard({ initialRevision }: BuildRevisionGuardProps) {
   useEffect(() => {
     let disposed = false;
     let reloading = false;
+    const loadedRevision = initialRevision;
 
     const verifyRevision = async () => {
       if (disposed || reloading) return;
@@ -22,7 +26,7 @@ export default function BuildRevisionGuard() {
 
         const payload = await response.json() as { revision?: string };
         const serverRevision = payload.revision?.trim();
-        if (!serverRevision || serverRevision === BUILD_REVISION) return;
+        if (!serverRevision || serverRevision === loadedRevision) return;
 
         reloading = true;
         const url = new URL(window.location.href);
@@ -50,7 +54,7 @@ export default function BuildRevisionGuard() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [initialRevision]);
 
   return null;
 }
