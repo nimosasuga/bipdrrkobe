@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 
 const CHARGER_ERROR_QUESTION = 'Seberapa sering charger menampilkan kode gangguan?';
+const CHARGER_FAULT_PATTERN = /(charger\s*(bermasalah|error|gangguan))|((gangguan|error)\s+.*charger)|(performa\s+charger)/i;
 
 const TEXT_REPLACEMENTS: Record<string, string> = {
   'Pengisian Battery Terlalu Lama / Charger Bermasalah': 'Pengisian Battery Terlalu Lama',
@@ -33,11 +34,24 @@ function hideChargerErrorQuestion() {
 }
 
 function rewriteChargerFaultCopy() {
+  const leaves = Array.from(document.querySelectorAll<HTMLElement>('*')).filter(
+    (node) => node.children.length === 0 && Boolean(node.textContent?.trim()),
+  );
+
   Object.entries(TEXT_REPLACEMENTS).forEach(([from, to]) => {
-    Array.from(document.querySelectorAll<HTMLElement>('*')).forEach((node) => {
-      if (node.children.length !== 0 || node.textContent?.trim() !== from) return;
-      node.textContent = to;
+    leaves.forEach((node) => {
+      if (node.textContent?.trim() === from) node.textContent = to;
     });
+  });
+
+  leaves.forEach((node) => {
+    const text = node.textContent?.trim() ?? '';
+    if (!text || !CHARGER_FAULT_PATTERN.test(text)) return;
+
+    // Jangan menghapus konteks compatibility Technical Assessment.
+    if (/kompatibilitas|compatible|compatibility/i.test(text)) return;
+
+    node.textContent = 'Charging window perlu diverifikasi terhadap kebutuhan operasi.';
   });
 }
 
