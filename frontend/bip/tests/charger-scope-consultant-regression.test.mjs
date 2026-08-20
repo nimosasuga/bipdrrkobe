@@ -43,7 +43,7 @@ test('charger fault no longer contributes to diagnosis confidence or mock causes
 
 test('frontend hides charger error question and rewrites charger-fault issue copy', () => {
   assert.match(uiGuard, /Seberapa sering charger menampilkan kode gangguan\?/);
-  assert.match(uiGuard, /data\.drrkobeChargerFaultQuestion/);
+  assert.match(uiGuard, /dataset\.drrkobeChargerFaultQuestion/);
   assert.match(uiGuard, /Pengisian Battery Terlalu Lama/);
   assert.match(uiGuard, /Forklift Sering Berhenti Karena Battery \/ Proses Pengisian/);
   assert.match(diagnosisLayout, /<ChargerDiagnosisScopeGuard \/>/);
@@ -53,7 +53,9 @@ test('PDF contains dynamic Lifetime Advantage positioning', () => {
   assert.match(pdfPositioning, /LIFETIME ADVANTAGE/);
   assert.match(pdfPositioning, /batteryAgeYears/);
   assert.match(pdfPositioning, /Lead Acid saat ini \$\{age\} tahun/);
-  assert.match(pdfPositioning, /Potensi cycle life lebih panjang/);
+  assert.match(pdfPositioning, /~1\.200 siklus/);
+  assert.match(pdfPositioning, /~3\.000\+ siklus/);
+  assert.match(pdfPositioning, />2x cycle potential/);
 });
 
 test('PDF positions DRRKOBE as technical consultant before final commercial offer', () => {
