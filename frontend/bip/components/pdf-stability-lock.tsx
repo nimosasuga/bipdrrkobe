@@ -7,12 +7,12 @@ const DIRECT_FINANCIAL_CONTEXT_KEY = 'drrkobe_bip_pdf_financial_direct';
 
 const DOWNTIME_REDUCTION_FACTOR = 0.75;
 const MAINTENANCE_REDUCTION_FACTOR = 0.90;
-const CHARGING_COST_REDUCTION_FACTOR = 0.28;
 
 type FinancialContext = {
   actualDowntimeHoursPerUnitMonth: number | null;
   downtimeCostPerHour: number;
   maintenanceCostPerUnitMonth: number;
+  // Compatibility only. Charging is not part of the Rupiah model.
   chargingCostPerUnitMonth: number;
   fleetSize: number;
 };
@@ -23,8 +23,9 @@ type DirectFinancialContext = Partial<Pick<
 >>;
 
 type PdfLockState = {
-  page5Metric: 'downtime' | 'maintenance' | 'charging' | 'total' | null;
-  page5ChartRow: 'charging' | null;
+  page5Metric: 'downtime' | 'maintenance' | 'chargingOperational' | 'total' | null;
+  page5ChargingNotePending: boolean;
+  page5ChartChargingPending: boolean;
   page5FallbackActive: boolean;
   page7Metric: 'lead' | 'lithium' | 'gap' | 'status' | null;
 };
@@ -44,7 +45,8 @@ function stateFor(instance: jsPDF): PdfLockState {
   if (!state) {
     state = {
       page5Metric: null,
-      page5ChartRow: null,
+      page5ChargingNotePending: false,
+      page5ChartChargingPending: false,
       page5FallbackActive: false,
       page7Metric: null,
     };
@@ -68,22 +70,16 @@ function readDirectFinancialContext(): DirectFinancialContext {
     const raw = window.sessionStorage.getItem(DIRECT_FINANCIAL_CONTEXT_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as DirectFinancialContext;
-    const direct: DirectFinancialContext = {};
-
-    if (typeof parsed.downtimeCostPerHour === 'number') {
-      direct.downtimeCostPerHour = Math.max(0, parsed.downtimeCostPerHour);
-    }
-    if (typeof parsed.maintenanceCostPerUnitMonth === 'number') {
-      direct.maintenanceCostPerUnitMonth = Math.max(0, parsed.maintenanceCostPerUnitMonth);
-    }
-    if (typeof parsed.chargingCostPerUnitMonth === 'number') {
-      direct.chargingCostPerUnitMonth = Math.max(0, parsed.chargingCostPerUnitMonth);
-    }
-    if (typeof parsed.fleetSize === 'number') {
-      direct.fleetSize = Math.max(1, parsed.fleetSize);
-    }
-
-    return direct;
+    return {
+      downtimeCostPerHour: typeof parsed.downtimeCostPerHour === 'number'
+        ? Math.max(0, parsed.downtimeCostPerHour)
+        : undefined,
+      maintenanceCostPerUnitMonth: typeof parsed.maintenanceCostPerUnitMonth === 'number'
+        ? Math.max(0, parsed.maintenanceCostPerUnitMonth)
+        : undefined,
+      chargingCostPerUnitMonth: 0,
+      fleetSize: typeof parsed.fleetSize === 'number' ? Math.max(1, parsed.fleetSize) : undefined,
+    };
   } catch {
     return {};
   }
@@ -117,10 +113,8 @@ function readFinancialContext(): FinancialContext {
       ?? Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
     maintenanceCostPerUnitMonth: direct.maintenanceCostPerUnitMonth
       ?? Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
-    chargingCostPerUnitMonth: direct.chargingCostPerUnitMonth
-      ?? Math.max(0, Number(parsed.chargingCostPerUnitMonth) || 0),
-    fleetSize: direct.fleetSize
-      ?? Math.max(1, Number(parsed.fleetSize) || 1),
+    chargingCostPerUnitMonth: 0,
+    fleetSize: direct.fleetSize ?? Math.max(1, Number(parsed.fleetSize) || 1),
   };
 }
 
@@ -129,20 +123,18 @@ function totals() {
   const downtimeHours = context.actualDowntimeHoursPerUnitMonth ?? 0;
   const downtime = downtimeHours * context.downtimeCostPerHour * context.fleetSize;
   const maintenance = context.maintenanceCostPerUnitMonth * context.fleetSize;
-  const charging = context.chargingCostPerUnitMonth * context.fleetSize;
-  const lead = downtime + maintenance + charging;
 
+  // Financial baseline BIP: downtime + routine Lead Acid maintenance only.
+  const lead = downtime + maintenance;
   const lithiumDowntime = downtime * (1 - DOWNTIME_REDUCTION_FACTOR);
   const lithiumMaintenance = maintenance * (1 - MAINTENANCE_REDUCTION_FACTOR);
-  const lithiumCharging = charging * (1 - CHARGING_COST_REDUCTION_FACTOR);
-  const lithium = lithiumDowntime + lithiumMaintenance + lithiumCharging;
+  const lithium = lithiumDowntime + lithiumMaintenance;
   const gap = Math.max(0, lead - lithium);
 
   return {
     context,
     downtime,
     maintenance,
-    charging,
     lead,
     annualLead: lead * 12,
     lithium,
@@ -169,24 +161,8 @@ function normalizeInput(input: string | string[]): string {
   return lines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-function isPage5AmountPlaceholder(value: string): boolean {
-  return /^Rp\s/i.test(value) || /^(Belum diketahui|Belum dihitung|Belum final)$/i.test(value);
-}
-
-function fallbackPage5Label(value: ReturnType<typeof totals>): string {
-  const activeRows = [value.downtime > 0, value.maintenance > 0, value.charging > 0].filter(Boolean).length;
-  if (activeRows === 1 && value.charging > 0) return 'PENGISIAN / BULAN';
-  if (activeRows === 1 && value.maintenance > 0) return 'PERAWATAN / BULAN';
-  if (activeRows === 1 && value.downtime > 0) return 'WAKTU HENTI / BULAN';
-  return 'TOTAL BIAYA OPERASIONAL / BULAN';
-}
-
-function fallbackPage5Amount(value: ReturnType<typeof totals>): number {
-  const label = fallbackPage5Label(value);
-  if (label === 'PENGISIAN / BULAN') return value.charging;
-  if (label === 'PERAWATAN / BULAN') return value.maintenance;
-  if (label === 'WAKTU HENTI / BULAN') return value.downtime;
-  return value.lead;
+function isPage5Amount(value: string): boolean {
+  return /^Rp\s/i.test(value) || /^(Belum diketahui|Belum dihitung|Belum final|Non-finansial)$/i.test(value);
 }
 
 function transformLockedText(instance: jsPDF, input: string | string[]): string | string[] {
@@ -194,29 +170,52 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
   const joined = normalizeInput(input);
   const state = stateFor(instance);
 
-  // LOCK PAGE 4: hanya perbaiki value PENGISIAN DAYA yang terbukti overflow.
+  // PAGE 4: charging tetap merupakan data operasional.
   if (page === 4 && /\s\/\s*siklus$/i.test(joined) && /jam/i.test(joined)) {
     return joined.replace(/\s*\/\s*siklus$/i, '');
   }
 
-  // LOCK PAGE 5: nominal user menjadi sumber kebenaran utama.
   if (page === 5) {
-    if (joined === 'WAKTU HENTI / BULAN') state.page5Metric = 'downtime';
-    if (joined === 'PERAWATAN / BULAN') state.page5Metric = 'maintenance';
-    if (joined === 'PENGISIAN / BULAN') state.page5Metric = 'charging';
-    if (joined === 'TOTAL BIAYA OPERASIONAL / BULAN') state.page5Metric = 'total';
-
     const value = totals();
 
-    // Generator lama dapat masuk ke blok "menunggu data" saat detail charging = Tidak tahu,
-    // walaupun customer telah memasukkan nominal. Ubah blok itu menjadi hasil nyata.
+    if (joined === 'WAKTU HENTI / BULAN') state.page5Metric = 'downtime';
+    if (joined === 'PERAWATAN / BULAN') state.page5Metric = 'maintenance';
+    if (joined === 'TOTAL BIAYA OPERASIONAL / BULAN') state.page5Metric = 'total';
+
+    if (joined === 'PENGISIAN / BULAN') {
+      state.page5Metric = 'chargingOperational';
+      return 'CHARGING / OPERASIONAL';
+    }
+
+    if (state.page5Metric && isPage5Amount(joined)) {
+      const metric = state.page5Metric;
+      state.page5Metric = null;
+
+      if (metric === 'downtime' && value.downtime > 0) return rupiah(value.downtime);
+      if (metric === 'maintenance' && value.maintenance > 0) return rupiah(value.maintenance);
+      if (metric === 'total' && value.lead > 0) return rupiah(value.lead);
+      if (metric === 'chargingOperational') {
+        state.page5ChargingNotePending = true;
+        return 'Non-finansial';
+      }
+    }
+
+    if (
+      state.page5ChargingNotePending
+      && /^(Menunggu biaya pengisian|Menunggu data pengisian|Berdasarkan data perusahaan)$/i.test(joined)
+    ) {
+      state.page5ChargingNotePending = false;
+      return 'Gunakan durasi charging pada halaman 4';
+    }
+
+    // Generator lama dapat masuk ke status menunggu walau ada maintenance/downtime yang valid.
     if (joined === 'STATUS DATA BIAYA' && value.lead > 0) {
       state.page5FallbackActive = true;
-      return fallbackPage5Label(value);
+      return 'TOTAL BIAYA OPERASIONAL / BULAN';
     }
 
     if (state.page5FallbackActive && joined === 'Menunggu data biaya perusahaan' && value.lead > 0) {
-      return rupiah(fallbackPage5Amount(value));
+      return rupiah(value.lead);
     }
 
     if (
@@ -225,28 +224,7 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
       && value.lead > 0
     ) {
       state.page5FallbackActive = false;
-      if (value.charging > 0) {
-        return `Berdasarkan data perusahaan: ${rupiah(value.context.chargingCostPerUnitMonth)} x ${value.context.fleetSize} unit = ${rupiah(value.charging)} / bulan.`;
-      }
-      return `Berdasarkan data biaya yang diberikan perusahaan. Total teridentifikasi ${rupiah(value.lead)} / bulan.`;
-    }
-
-    if (state.page5Metric && isPage5AmountPlaceholder(joined)) {
-      const metric = state.page5Metric;
-      state.page5Metric = null;
-
-      if (metric === 'downtime' && value.downtime > 0) return rupiah(value.downtime);
-      if (metric === 'maintenance' && value.maintenance > 0) return rupiah(value.maintenance);
-      if (metric === 'charging' && value.charging > 0) return rupiah(value.charging);
-      if (metric === 'total' && value.lead > 0) return rupiah(value.lead);
-    }
-
-    if (joined === 'Menunggu data pengisian' && value.charging > 0) {
-      return 'Berdasarkan data perusahaan';
-    }
-
-    if (joined === 'Menunggu data perawatan' && value.maintenance > 0) {
-      return 'Berdasarkan data perusahaan';
+      return `Berdasarkan biaya downtime dan/atau Maintenance Lead Acid yang diberikan perusahaan. Total teridentifikasi ${rupiah(value.lead)} / bulan.`;
     }
 
     if (joined.startsWith('Estimasi tahunan berdasarkan data user:') && value.lead > 0) {
@@ -254,17 +232,17 @@ function transformLockedText(instance: jsPDF, input: string | string[]): string 
     }
 
     if (joined === 'Pengisian') {
-      state.page5ChartRow = 'charging';
-      return input;
+      state.page5ChartChargingPending = true;
+      return 'Charging (operasional)';
     }
 
-    if (state.page5ChartRow === 'charging' && (joined === 'Belum dihitung' || /^Rp\s/i.test(joined))) {
-      state.page5ChartRow = null;
-      if (value.charging > 0) return rupiah(value.charging);
+    if (state.page5ChartChargingPending && isPage5Amount(joined)) {
+      state.page5ChartChargingPending = false;
+      return 'Non-finansial';
     }
   }
 
-  // LOCK PAGE 7: card tetap sama; hanya isi value dibuat aman terhadap box.
+  // PAGE 7: perbandingan biaya hanya memakai downtime + maintenance.
   if (page === 7) {
     if (joined === 'WAKTU HENTI') state.page7Metric = 'lead';
     if (joined === 'EFISIENSI ENERGI') state.page7Metric = 'lithium';
