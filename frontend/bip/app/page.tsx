@@ -10,15 +10,13 @@ export const metadata: Metadata = {
 };
 
 const steps = [
-  ['01', 'Pilih bidang & forklift'],
-  ['02', 'Konfigurasi battery'],
-  ['03', 'Pilih gejala'],
-  ['04', 'Lengkapi kondisi operasi'],
-  ['05', 'Baca hasil diagnosis'],
-  ['06', 'Lihat dampak yang dilaporkan'],
-  ['07', 'Bandingkan teknologi'],
-  ['08', 'Validasi kebutuhan operasi'],
-  ['09', 'Dapatkan rekomendasi'],
+  ['01', 'Pilih unit & operation context'],
+  ['02', 'Pilih gejala'],
+  ['03', 'Lengkapi detail kondisi'],
+  ['04', 'Baca AI diagnosis'],
+  ['05', 'Bandingkan teknologi'],
+  ['06', 'Validasi business impact'],
+  ['07', 'Lanjut Technical Assessment'],
 ];
 
 const deliverables = [
@@ -35,7 +33,7 @@ const deliverables = [
   {
     code: '03',
     title: 'Prioritas Pemeriksaan',
-    body: 'Membantu menentukan apa yang perlu diperiksa lebih dahulu pada battery, charger, konektor, unit, atau pola operasi.',
+    body: 'Membantu menentukan apa yang perlu diperiksa lebih dahulu pada battery, proses pengisian, konektor, unit, atau pola operasi.',
   },
   {
     code: '04',
@@ -58,7 +56,7 @@ const principles = [
   {
     code: '03',
     title: 'Hasil diarahkan ke pemeriksaan yang bisa diverifikasi',
-    body: 'Rekomendasi difokuskan pada inspeksi, pengujian, riwayat charging, konektor, kondisi cell, dan bukti teknis lain yang relevan.',
+    body: 'Rekomendasi difokuskan pada inspeksi, pengujian, charging window, konektor, kondisi cell, dan bukti teknis lain yang relevan.',
   },
   {
     code: '04',
@@ -70,12 +68,11 @@ const principles = [
 const issues = [
   'Battery cepat habis',
   'Charging terlalu lama',
-  'Charger error',
   'Downtime berulang',
   'Isi air terlalu sering',
   'Hydraulic terasa lambat',
   'Overheat',
-  'Masalah electrical',
+  'Masalah electrical pada unit',
   'Drive / steering issue',
   'Produktivitas menurun',
 ];
@@ -130,7 +127,7 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-7 max-w-2xl text-base leading-7 text-zinc-600 sm:text-lg">
-              Masukkan model forklift, umur battery, pola shift, charging, maintenance, dan gejala yang benar-benar terjadi. DRRKOBE BIP membantu membaca kondisi battery, indikasi penyebab, dan langkah pemeriksaan berikutnya sebelum Anda memutuskan maintenance, penggantian battery, atau evaluasi Lithium-ion.
+              Masukkan model forklift, jam operasi, shift, umur battery, charging, maintenance, dan gejala yang benar-benar terjadi. DRRKOBE BIP membantu membaca kondisi battery, indikasi penyebab, dan langkah pemeriksaan berikutnya sebelum Anda memutuskan maintenance, penggantian battery, atau evaluasi Lithium-ion.
             </p>
 
             <div className="mt-9 flex flex-wrap gap-3">
@@ -188,15 +185,15 @@ export default function HomePage() {
       <section className="border-b border-zinc-200 bg-white">
         <div className="mx-auto max-w-[1280px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
           <div className="max-w-3xl">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[.16em] text-zinc-500">9 LANGKAH ASSESSMENT</p>
-            <h2 className="mt-3 text-4xl font-black leading-[.98] tracking-[-.05em] sm:text-5xl">Anda isi kondisi yang diketahui. BIP membantu menyusun apa yang perlu diperiksa.</h2>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[.16em] text-zinc-500">7 LANGKAH ASSESSMENT</p>
+            <h2 className="mt-3 text-4xl font-black leading-[.98] tracking-[-.05em] sm:text-5xl">Lebih ringkas di awal. Tetap lengkap saat keputusan dibutuhkan.</h2>
           </div>
 
           <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {steps.map(([number, label], index) => (
-              <div key={number} className={`group rounded-[20px] border p-5 transition ${index === 4 ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white' : 'border-zinc-200 bg-[#FCFCF9] hover:border-zinc-400'}`}>
-                <div className={`text-xs font-black ${index === 4 ? 'text-[#FFCC00]' : 'text-zinc-400'}`}>{number}</div>
-                <div className="mt-6 flex items-end justify-between gap-4"><h3 className="text-lg font-black">{label}</h3><span className={index === 4 ? 'text-xl text-[#FFCC00]' : 'text-xl text-zinc-300'}>→</span></div>
+              <div key={number} className={`group rounded-[20px] border p-5 transition ${index === 3 ? 'border-[#0A0A0A] bg-[#0A0A0A] text-white' : 'border-zinc-200 bg-[#FCFCF9] hover:border-zinc-400'}`}>
+                <div className={`text-xs font-black ${index === 3 ? 'text-[#FFCC00]' : 'text-zinc-400'}`}>{number}</div>
+                <div className="mt-6 flex items-end justify-between gap-4"><h3 className="text-lg font-black">{label}</h3><span className={index === 3 ? 'text-xl text-[#FFCC00]' : 'text-xl text-zinc-300'}>→</span></div>
               </div>
             ))}
           </div>
