@@ -9,6 +9,7 @@ type FinancialContext = {
   actualDowntimeHoursPerUnitMonth: number | null;
   downtimeCostPerHour: number;
   maintenanceCostPerUnitMonth: number;
+  // Legacy compatibility only. Charging is operational context, not a Rupiah cost.
   chargingCostPerUnitMonth: number;
   fleetSize: number;
 };
@@ -38,7 +39,7 @@ function readContext(): FinancialContext {
         : null,
       downtimeCostPerHour: Math.max(0, Number(parsed.downtimeCostPerHour) || 0),
       maintenanceCostPerUnitMonth: Math.max(0, Number(parsed.maintenanceCostPerUnitMonth) || 0),
-      chargingCostPerUnitMonth: Math.max(0, Number(parsed.chargingCostPerUnitMonth) || 0),
+      chargingCostPerUnitMonth: 0,
       fleetSize: Math.max(1, Number(parsed.fleetSize) || 1),
     };
   } catch {
@@ -48,7 +49,10 @@ function readContext(): FinancialContext {
 
 function writeContext(context: FinancialContext) {
   try {
-    window.sessionStorage.setItem(FINANCIAL_CONTEXT_KEY, JSON.stringify(context));
+    window.sessionStorage.setItem(
+      FINANCIAL_CONTEXT_KEY,
+      JSON.stringify({ ...context, chargingCostPerUnitMonth: 0 }),
+    );
   } catch {
     // Assessment tetap berjalan bila sessionStorage tidak tersedia.
   }
@@ -127,11 +131,12 @@ function restoreStableContext() {
   if (baseline === null) return;
 
   const current = readContext();
-  if (current.actualDowntimeHoursPerUnitMonth === baseline) return;
+  if (current.actualDowntimeHoursPerUnitMonth === baseline && current.chargingCostPerUnitMonth === 0) return;
 
   writeContext({
     ...current,
     actualDowntimeHoursPerUnitMonth: baseline,
+    chargingCostPerUnitMonth: 0,
   });
 }
 
