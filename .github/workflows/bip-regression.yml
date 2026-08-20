@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - 'frontend/bip/**'
+      - 'backend/api/**'
       - '.github/workflows/bip-regression.yml'
   pull_request:
     paths:
       - 'frontend/bip/**'
+      - 'backend/api/**'
       - '.github/workflows/bip-regression.yml'
 
 jobs:
@@ -29,8 +31,27 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Run Page 5 regression tests
+      - name: Run BIP regression tests
         run: npm test
 
       - name: Build Next.js frontend
         run: npm run build
+
+  backend-syntax:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/api
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Validate Laravel PHP syntax
+        run: find app -name '*.php' -print0 | xargs -0 -n1 php -l
