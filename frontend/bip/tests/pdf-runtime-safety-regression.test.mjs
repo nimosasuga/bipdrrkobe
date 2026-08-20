@@ -30,6 +30,16 @@ test('known fixed-height PDF regions have explicit line caps', () => {
   assert.match(bounds, /page === 8.*return 3/);
 });
 
+test('final draw pass strips charger-fault semantics from diagnosis pages only', () => {
+  assert.match(bounds, /function sanitizeNonDiagnosticChargerCopy\(/);
+  assert.match(bounds, /if \(page > 5\) return value/);
+  assert.match(bounds, /frekuensi waktu henti terkait baterai atau charger/);
+  assert.match(bounds, /penyebab battery,\\s\*charger,\\s\*dan unit/);
+  assert.match(bounds, /uji kapasitas battery dan charger/);
+  assert.match(bounds, /uji charger dan kapasitas battery/);
+  assert.match(bounds, /sanitizeNonDiagnosticChargerCopy\(source, page\)/);
+});
+
 test('generated PDFs carry the active Docker renderer revision for forensic verification', () => {
   assert.match(bounds, /activeRendererRevision/);
   assert.match(bounds, /creator: `DRRKOBE BIP \$\{activeRendererRevision\}`/);
