@@ -30,14 +30,12 @@ class DiagnosisController extends Controller
             'answers.charging_lama' => ['sometimes', 'nullable', 'boolean'],
             'answers.isi_air' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:7'],
             'answers.downtime' => ['sometimes', 'nullable', 'boolean'],
-            'answers.charger_error' => ['sometimes', 'nullable', 'boolean'],
             'answers.hydraulic_lambat' => ['sometimes', 'nullable', 'boolean'],
 
             'answers.fast_drain_duration' => ['sometimes', 'nullable', 'in:under_4,four_to_six,six_to_eight,over_eight,unknown'],
             'answers.charging_duration' => ['sometimes', 'nullable', 'in:under_6,six_to_eight,eight_to_ten,over_ten,unknown'],
             'answers.watering_frequency' => ['sometimes', 'nullable', 'in:never,less_than_weekly,once_weekly,twice_weekly,more_than_twice,unknown'],
             'answers.downtime_frequency' => ['sometimes', 'nullable', 'in:never,once_twice,three_four,five_plus,unknown'],
-            'answers.charger_error_frequency' => ['sometimes', 'nullable', 'in:never,once,repeated,unknown'],
             'answers.hydraulic_when_low' => ['sometimes', 'nullable', 'in:never,sometimes,often,unknown'],
 
             'answers.issues' => ['sometimes', 'array', 'max:10'],
@@ -78,9 +76,9 @@ class DiagnosisController extends Controller
         };
 
         $recommendation = match (true) {
-            $healthScore <= 40 => 'Pemeriksaan teknis lapangan perlu diprioritaskan',
-            $healthScore <= 65 => 'Pemeriksaan teknis direkomendasikan sebelum keputusan perubahan teknologi',
-            $healthScore <= 80 => 'Pantau kondisi battery dan verifikasi bila gejala meningkat',
+            $healthScore <= 40 => 'Technical Assessment Lithium-ion perlu diprioritaskan sebelum proposal dan harga final',
+            $healthScore <= 65 => 'Technical Assessment direkomendasikan sebelum keputusan perubahan teknologi',
+            $healthScore <= 80 => 'Pantau kondisi battery dan lakukan Technical Assessment bila gejala meningkat',
             default => 'Kondisi battery relatif baik berdasarkan data yang tersedia',
         };
 
@@ -107,7 +105,7 @@ class DiagnosisController extends Controller
             'causes' => $causes,
             'confidence' => $confidence,
             'recommendation' => $recommendation,
-            'next_action' => 'Lanjutkan ke pemeriksaan teknis DRRKOBE bila diperlukan',
+            'next_action' => 'Lanjutkan ke Technical Assessment DRRKOBE sebelum proposal teknis dan penawaran harga final',
         ];
 
         Cache::put($cacheKey, $response, now()->addHour());
@@ -120,6 +118,11 @@ class DiagnosisController extends Controller
 
     private function normalizeOperationalAnswers(array $answers): array
     {
+        // Charger fault/error bukan bagian dari scope diagnosis BIP.
+        // Charging duration tetap dipertahankan karena penting untuk charging window
+        // dan evaluasi kompatibilitas pada Technical Assessment.
+        unset($answers['charger_error'], $answers['charger_error_frequency']);
+
         if (array_key_exists('fast_drain_duration', $answers)) {
             $answers['cepat_habis'] = match ($answers['fast_drain_duration']) {
                 'under_4' => true,
@@ -154,20 +157,37 @@ class DiagnosisController extends Controller
             };
         }
 
-        if (array_key_exists('charger_error_frequency', $answers)) {
-            $answers['charger_error'] = match ($answers['charger_error_frequency']) {
-                'once', 'repeated' => true,
-                'never' => false,
-                default => null,
-            };
-        }
-
         if (array_key_exists('hydraulic_when_low', $answers)) {
             $answers['hydraulic_lambat'] = match ($answers['hydraulic_when_low']) {
                 'sometimes', 'often' => true,
                 'never' => false,
                 default => null,
             };
+        }
+
+        if (isset($answers['issues']) && is_array($answers['issues'])) {
+            $answers['issues'] = collect($answers['issues'])
+                ->filter(fn ($issue) => is_string($issue) && trim($issue) !== '')
+                ->map(function (string $issue): string {
+                    $clean = trim($issue);
+                    $clean = str_ireplace(
+                        'Pengisian Battery Terlalu Lama / Charger Bermasalah',
+                        'Pengisian Battery Terlalu Lama',
+                        $clean
+                    );
+                    $clean = str_ireplace(
+                        'Forklift Sering Berhenti Karena Battery / Charger',
+                        'Forklift Sering Berhenti Karena Battery / Proses Pengisian',
+                        $clean
+                    );
+
+                    return $clean;
+                })
+                ->reject(fn (string $issue) => preg_match('/charger\s*(error|bermasalah|gangguan)|kode\s+gangguan\s+charger/i', $issue) === 1)
+                ->unique()
+                ->take(10)
+                ->values()
+                ->all();
         }
 
         return $answers;
@@ -191,7 +211,7 @@ class DiagnosisController extends Controller
             ];
         }
 
-        if (($answers['charging_lama'] ?? null) === true || ($answers['charger_error'] ?? null) === true) {
+        if (($answers['charging_lama'] ?? null) === true) {
             $causes[] = [
                 'name' => 'Charging Habit',
                 'prob' => 68,
@@ -222,7 +242,6 @@ class DiagnosisController extends Controller
             $answers['charging_lama'] ?? null,
             $answers['isi_air'] ?? null,
             $answers['downtime'] ?? null,
-            $answers['charger_error'] ?? null,
             $answers['hydraulic_lambat'] ?? null,
         ])->filter(fn ($value) => $value !== null)->count();
 
@@ -236,6 +255,7 @@ class DiagnosisController extends Controller
         AiDiagnosticService $aiDiagnosticService
     ): JsonResponse {
         $context = $aiDiagnosticService->buildContext($diagnosis);
+        $publicAnswers = $this->normalizeOperationalAnswers($diagnosis->answers_json ?? []);
 
         $category = match (true) {
             $diagnosis->health_score <= 40 => 'Kritis',
@@ -255,9 +275,11 @@ class DiagnosisController extends Controller
                 'umur_battery' => $diagnosis->umur_battery,
                 'shift' => $diagnosis->shift,
                 'jam_operasi' => $diagnosis->jam_operasi,
-                'answers' => $diagnosis->answers_json,
+                'answers' => $publicAnswers,
                 'forklift' => $context['forklift'],
                 'battery_specs' => $context['battery_specs'],
+                // Charger tetap tersedia hanya sebagai referensi kompatibilitas teknis,
+                // bukan sebagai objek diagnosis fault/error BIP.
                 'charger_specs' => $context['charger_specs'],
                 'diagnostic_rules' => $context['diagnostic_rules'],
                 'ai' => [
