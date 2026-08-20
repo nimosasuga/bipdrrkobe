@@ -75,9 +75,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </section>
 
             <section>
-              <p className="drr-footer__label">BIP • 9 LANGKAH</p>
+              <p className="drr-footer__label">BIP • 7 LANGKAH</p>
               <p className="drr-footer__muted drr-footer__muted--dark">
-                Dari identifikasi bidang dan unit, gejala, kondisi operasional, diagnosis, dampak, perbandingan teknologi, validasi kebutuhan operasi, hingga rekomendasi technical assessment.
+                Dari unit dan operation context, gejala, detail kondisi, AI diagnosis, perbandingan teknologi, business impact, hingga rekomendasi technical assessment.
               </p>
               <p className="drr-footer__palette">BLACK #0A0A0A · WHITE · YELLOW #FFCC00</p>
             </section>
