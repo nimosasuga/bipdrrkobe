@@ -9,7 +9,6 @@ type FinancialContext = {
   actualDowntimeHoursPerUnitMonth: number | null;
   downtimeCostPerHour: number;
   maintenanceCostPerUnitMonth: number;
-  // Legacy compatibility only. Charging is operational context, not a Rupiah cost.
   chargingCostPerUnitMonth: number;
   fleetSize: number;
 };
@@ -17,6 +16,12 @@ type FinancialContext = {
 function sectionByTitle(title: string): HTMLElement | null {
   return Array.from(document.querySelectorAll<HTMLElement>('section')).find(
     (section) => section.querySelector('h1')?.textContent?.includes(title),
+  ) ?? null;
+}
+
+function leaf(root: ParentNode, text: string): HTMLElement | null {
+  return Array.from(root.querySelectorAll<HTMLElement>('*')).find(
+    (node) => node.children.length === 0 && node.textContent?.trim() === text,
   ) ?? null;
 }
 
@@ -85,7 +90,25 @@ function clearBaseline() {
   }
 }
 
-function captureStableBaselineFromStep4() {
+function selectedShiftFromDetail(section: HTMLElement): number | null {
+  // Native seven-step flow carries the Step-1 shift into a summary on Step 3.
+  const summaryLabel = leaf(section, 'Shift');
+  const summaryValue = summaryLabel?.parentElement?.querySelector('strong')?.textContent ?? '';
+  const summaryMatch = summaryValue.match(/(\d+)\s*shift/i);
+  if (summaryMatch) return Number(summaryMatch[1]);
+
+  // Compatibility with the former nine-step form while old tabs are being replaced.
+  const legacyLabel = leaf(section, 'Berapa shift operasional per hari?');
+  const legacyPanel = legacyLabel?.parentElement;
+  const selectedButton = Array.from(legacyPanel?.querySelectorAll<HTMLButtonElement>('button') ?? []).find((button) => {
+    const className = typeof button.className === 'string' ? button.className : '';
+    return className.includes('bg-black');
+  });
+  const legacyMatch = selectedButton?.textContent?.match(/(\d+)\s*Shift/i);
+  return legacyMatch ? Number(legacyMatch[1]) : null;
+}
+
+function captureStableBaselineFromDetailStep() {
   const section = sectionByTitle('Lengkapi Kondisi Operasional');
   if (!section) return;
 
@@ -94,17 +117,7 @@ function captureStableBaselineFromStep4() {
   )?.textContent ?? '';
   const ageMatch = ageText.match(/Perkiraan umur battery:\s*(\d+(?:[.,]\d+)?)\s*tahun/i);
   const age = ageMatch ? Number(ageMatch[1].replace(',', '.')) : null;
-
-  const shiftLabel = Array.from(section.querySelectorAll<HTMLElement>('*')).find((node) =>
-    node.children.length === 0 && node.textContent?.trim() === 'Berapa shift operasional per hari?',
-  );
-  const shiftPanel = shiftLabel?.parentElement;
-  const selectedShiftButton = Array.from(shiftPanel?.querySelectorAll<HTMLButtonElement>('button') ?? []).find((button) => {
-    const className = typeof button.className === 'string' ? button.className : '';
-    return className.includes('bg-black');
-  });
-  const shiftMatch = selectedShiftButton?.textContent?.match(/(\d+)\s*Shift/i);
-  const shift = shiftMatch ? Number(shiftMatch[1]) : null;
+  const shift = selectedShiftFromDetail(section);
 
   if (age === null || shift === null) return;
 
@@ -122,8 +135,8 @@ function neutralizeInjectedDowntimeField() {
 }
 
 function restoreStableContext() {
-  const stepEight = sectionByTitle('Hitung Potensi Efisiensi') || sectionByTitle('Validasi Kebutuhan Operasional');
-  if (!stepEight) return;
+  const businessImpact = sectionByTitle('Hitung Potensi Efisiensi') || sectionByTitle('Validasi Kebutuhan Operasional');
+  if (!businessImpact) return;
 
   neutralizeInjectedDowntimeField();
 
@@ -154,7 +167,7 @@ export default function StableStep8Guard() {
         clearBaseline();
       }
 
-      captureStableBaselineFromStep4();
+      captureStableBaselineFromDetailStep();
       restoreStableContext();
     };
 
