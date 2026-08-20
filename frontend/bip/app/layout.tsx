@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import SiteHeader from '../components/site-header';
 import DiagnosisFunnelTracker from '../components/diagnosis-funnel-tracker';
+import BuildRevisionGuard from '../components/build-revision-guard';
+import PdfFinalBoundsGuard from '../components/pdf-final-bounds-guard';
 import PdfTextSafety from '../components/pdf-text-safety';
 import './globals.css';
 
@@ -41,6 +43,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="id">
       <body>
+        <BuildRevisionGuard />
+        <PdfFinalBoundsGuard />
         <PdfTextSafety />
         <DiagnosisFunnelTracker />
         <SiteHeader />
