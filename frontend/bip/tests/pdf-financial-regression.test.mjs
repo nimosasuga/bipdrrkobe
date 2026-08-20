@@ -10,71 +10,109 @@ function source(relativePath) {
   return fs.readFileSync(path.join(appRoot, relativePath), 'utf8');
 }
 
-const pdfSource = source('lib/generate-assessment-pdf.ts');
-const formSource = source('app/diagnosis/form/page.tsx');
+const pdfBoundarySource = source('lib/generate-assessment-pdf.ts');
 const financialSyncSource = source('components/financial-context-sync.tsx');
+const stableStep8Source = source('components/stable-step8-guard.tsx');
+const lithiumScenarioSource = source('components/lithium-scenario-guard.tsx');
+const pdfLockSource = source('components/pdf-stability-lock.tsx');
 
-function monthlyChargingCost(costPerUnitMonth, fleetSize) {
-  const unitCost = Math.max(0, Number(costPerUnitMonth) || 0);
+function leadAcidMonthlyCost({ downtimeCostPerHour, downtimeHours, maintenancePerUnitMonth, fleetSize }) {
   const units = Math.max(1, Number(fleetSize) || 1);
-  return unitCost * units;
+  const downtime = Math.max(0, Number(downtimeCostPerHour) || 0)
+    * Math.max(0, Number(downtimeHours) || 0)
+    * units;
+  const maintenance = Math.max(0, Number(maintenancePerUnitMonth) || 0) * units;
+  return { downtime, maintenance, total: downtime + maintenance };
 }
 
-test('Page 5 charging cost is independent from charging-duration knowledge', () => {
-  assert.match(
-    pdfSource,
-    /const monthlyChargingCost = chargingCostProvided\s*\?\s*chargingCostPerUnitMonth \* fleetSize\s*:\s*0;/,
-    'Production PDF formula must use customer charging cost x fleet size.',
-  );
+function lithiumMonthlyScenario({ downtime, maintenance }) {
+  return downtime * 0.25 + maintenance * 0.10;
+}
 
-  assert.doesNotMatch(
-    pdfSource,
-    /const monthlyChargingCost\s*=\s*chargingKnown\s*\?/,
-    'Charging cost must never be zeroed only because charging duration is unknown.',
+test('Public PDF boundary always blocks charging/electricity Rupiah cost', () => {
+  assert.match(
+    pdfBoundarySource,
+    /chargingCostPerUnitMonth:\s*0,/,
+    'Public PDF boundary must force the legacy charging cost field to zero.',
+  );
+  assert.match(
+    pdfBoundarySource,
+    /Charging duration remains an operational input/,
+    'Boundary must document that charging remains operational context.',
   );
 });
 
-test('Page 5 card renders the customer charging amount when provided', () => {
-  assert.match(
-    pdfSource,
-    /'Pengisian \/ bulan',[\s\S]{0,260}chargingCostProvided\s*\?\s*rupiah\(monthlyChargingCost\)\s*:\s*'Belum diketahui'/,
-    'Page 5 card must be driven by chargingCostProvided, not chargingKnown.',
-  );
+test('Step 8 hides the legacy Charging/listrik Rupiah input', () => {
+  assert.match(financialSyncSource, /LEGACY_CHARGING_COST_LABELS/);
+  assert.match(financialSyncSource, /charging \/ listrik \/ unit \/ bulan/);
+  assert.match(financialSyncSource, /data-drrkobe-legacy-charging-cost/);
+  assert.match(financialSyncSource, /input\.disabled = true;/);
 });
 
-test('Diagnosis form passes charging cost and fleet size directly to PDF generator', () => {
-  assert.match(formSource, /fleetSize:\s*jumlahForklift,/);
-  assert.match(formSource, /chargingCostPerUnitMonth,/);
-  assert.match(
-    formSource,
-    /const monthlyChargingCost = chargingCostPerUnitMonth \* jumlahForklift;/,
-    'UI preview and PDF payload must use the same charging-cost basis.',
-  );
+test('Battery-water cost aliases belong to Maintenance Lead Acid', () => {
+  const maintenanceBlock = financialSyncSource.match(/const MAINTENANCE_LABELS = \[[\s\S]*?\];/)?.[0] ?? '';
+  const legacyChargingBlock = financialSyncSource.match(/const LEGACY_CHARGING_COST_LABELS = \[[\s\S]*?\];/)?.[0] ?? '';
+
+  assert.match(maintenanceBlock, /biaya air battery \/ unit \/ bulan/);
+  assert.match(maintenanceBlock, /biaya air battery per bulan/);
+  assert.match(maintenanceBlock, /biaya air battery perbulan/);
+  assert.doesNotMatch(legacyChargingBlock, /biaya air battery/);
 });
 
-test('Financial sync clears stale charging values when user removes or rejects financial data', () => {
+test('Financial preview only totals downtime plus maintenance', () => {
   assert.match(
     financialSyncSource,
-    /if \(mode === 'unknown'\) \{[\s\S]{0,320}patch\.chargingCostPerUnitMonth = 0;/,
-    'Unknown mode must clear stale charging values.',
+    /const subtotal = monthlyDowntime \+ monthlyMaintenance;/,
+    'Step 8 subtotal must only include downtime and maintenance.',
   );
-
-  assert.match(
-    financialSyncSource,
-    /const value = raw === '' \? 0 : Math\.max\(0, Number\(raw\) \|\| 0\);/,
-    'Clearing a financial input must persist zero instead of restoring a stale value.',
-  );
+  assert.doesNotMatch(financialSyncSource, /subtotal\s*=.*monthlyCharging/);
 });
 
-test('Required charging-cost regression cases remain deterministic', () => {
-  const cases = [
-    [350_000, 1, 350_000],
-    [350_000, 5, 1_750_000],
-    [350_000, 10, 3_500_000],
-    [0, 5, 0],
-  ];
+test('Legacy charging values are neutralized in every financial storage path', () => {
+  assert.match(financialSyncSource, /chargingCostPerUnitMonth:\s*0/);
+  assert.match(stableStep8Source, /chargingCostPerUnitMonth:\s*0/);
+  assert.match(lithiumScenarioSource, /chargingCostPerUnitMonth:\s*0/);
+  assert.doesNotMatch(lithiumScenarioSource, /CHARGING_COST_REDUCTION_FACTOR/);
+});
 
-  for (const [cost, units, expected] of cases) {
-    assert.equal(monthlyChargingCost(cost, units), expected, `${cost} x ${units} must equal ${expected}`);
-  }
+test('PDF Page 5 labels charging as non-financial operational context', () => {
+  assert.match(pdfLockSource, /CHARGING \/ OPERASIONAL/);
+  assert.match(pdfLockSource, /Non-finansial/);
+  assert.match(pdfLockSource, /Gunakan durasi charging pada halaman 4/);
+  assert.match(pdfLockSource, /const lead = downtime \+ maintenance;/);
+});
+
+test('Required PT AAM regression case remains deterministic without charging Rupiah', () => {
+  const lead = leadAcidMonthlyCost({
+    downtimeCostPerHour: 100_000,
+    downtimeHours: 12.6,
+    maintenancePerUnitMonth: 500_000,
+    fleetSize: 3,
+  });
+
+  assert.equal(lead.downtime, 3_780_000);
+  assert.equal(lead.maintenance, 1_500_000);
+  assert.equal(lead.total, 5_280_000);
+  assert.equal(lead.total * 12, 63_360_000);
+
+  const lithium = lithiumMonthlyScenario(lead);
+  assert.equal(lithium, 1_095_000);
+  assert.equal(lead.total - lithium, 4_185_000);
+  assert.equal((lead.total - lithium) * 12, 50_220_000);
+});
+
+test('Charging cannot change the deterministic cost result', () => {
+  const baseline = leadAcidMonthlyCost({
+    downtimeCostPerHour: 100_000,
+    downtimeHours: 12.6,
+    maintenancePerUnitMonth: 500_000,
+    fleetSize: 3,
+  });
+
+  // There is intentionally no charging-cost parameter in the financial model.
+  assert.deepEqual(baseline, {
+    downtime: 3_780_000,
+    maintenance: 1_500_000,
+    total: 5_280_000,
+  });
 });
