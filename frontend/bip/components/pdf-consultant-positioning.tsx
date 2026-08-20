@@ -41,16 +41,16 @@ function normalize(input: string | string[]): string {
 
 function lifetimeLeadText(age: number | null): string {
   return age !== null
-    ? `Lead Acid saat ini ${age} tahun; performa dipengaruhi usia & duty cycle`
-    : 'Lead Acid saat ini; performa dipengaruhi usia & duty cycle';
+    ? `Lead Acid saat ini ${age} tahun; baseline BIP ~1.200 siklus`
+    : 'Lead Acid saat ini; baseline BIP ~1.200 siklus';
 }
 
 function lifetimeNarrative(age: number | null): string {
   const ageText = age !== null
-    ? `Battery Lead Acid saat ini telah digunakan ${age} tahun. `
+    ? `Lead Acid saat ini telah digunakan ${age} tahun. `
     : '';
 
-  return `LIFETIME ADVANTAGE — ${ageText}Lithium-ion menawarkan potensi cycle life yang lebih panjang dan performa yang lebih konsisten untuk operasi intensif. Nilai umur pakai aktual tetap bergantung pada duty cycle, temperatur, depth of discharge, kapasitas, dan strategi charging. Validasi spesifikasi melalui Technical Assessment DRRKOBE sebelum keputusan investasi.`;
+  return `LIFETIME ADVANTAGE — ${ageText}Baseline BIP membandingkan ~1.200 siklus Lead Acid dengan ~3.000+ siklus Lithium-ion (>2x cycle potential). Ini memperkuat nilai investasi jangka panjang, bukan jaminan umur tahun. Nilai aktual tetap bergantung pada duty cycle, temperatur, depth of discharge, kapasitas, dan charging strategy; validasi melalui Technical Assessment DRRKOBE.`;
 }
 
 function sanitizeOperationalChargerFaultCopy(text: string): string {
@@ -105,7 +105,7 @@ function transformPositioningText(instance: jsPDF, input: string | string[]): st
       return lifetimeLeadText(state.batteryAgeYears);
     }
     if (joined === 'Sekitar 3.000+ siklus' || joined === 'BMS bantu kelola charging') {
-      return 'Potensi cycle life lebih panjang; validasi duty cycle & spesifikasi';
+      return 'Baseline BIP ~3.000+ siklus; >2x cycle potential*';
     }
     if (joined.startsWith('Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan.')) {
       return lifetimeNarrative(state.batteryAgeYears);
