@@ -7,7 +7,6 @@ import LithiumScenarioGuard from '../../../components/lithium-scenario-guard';
 import PdfConsultantPositioning from '../../../components/pdf-consultant-positioning';
 import PdfStabilityLock from '../../../components/pdf-stability-lock';
 import PdfV3Branding from '../../../components/pdf-v3-branding';
-import SevenStepExperienceGuard from '../../../components/seven-step-experience-guard';
 import StableStep8Guard from '../../../components/stable-step8-guard';
 import StepValidationGuard from '../../../components/step-validation-guard';
 
@@ -35,7 +34,6 @@ export default function DiagnosisFormLayout({ children }: { children: ReactNode 
       <FinancialContextSync />
       <FinancialUiCopyGuard />
       <LithiumScenarioGuard />
-      <SevenStepExperienceGuard />
       <PdfV3Branding />
       <PdfConsultantPositioning />
       <PdfStabilityLock />
