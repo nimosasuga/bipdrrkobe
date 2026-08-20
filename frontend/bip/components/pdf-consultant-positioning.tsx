@@ -39,6 +39,18 @@ function normalize(input: string | string[]): string {
   return values.join(' ').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * IMPORTANT: this component runs after the core PDF layout has already measured
+ * its original copy. Any longer replacement must therefore be wrapped again
+ * before it is passed to jsPDF. Returning a raw long string here can bypass the
+ * core fitTextBlock()/paragraph() wrapping and cause text to leave the page.
+ */
+function wrappedText(instance: jsPDF, text: string, width: number, maxLines: number): string[] {
+  const result = (instance as any).splitTextToSize(text, width);
+  const lines = Array.isArray(result) ? result.map(String) : [String(result)];
+  return lines.slice(0, maxLines);
+}
+
 function lifetimeLeadText(age: number | null): string {
   return age !== null
     ? `Lead Acid saat ini ${age} tahun; baseline BIP ~1.200 siklus`
@@ -47,10 +59,10 @@ function lifetimeLeadText(age: number | null): string {
 
 function lifetimeNarrative(age: number | null): string {
   const ageText = age !== null
-    ? `Lead Acid saat ini telah digunakan ${age} tahun. `
+    ? `Lead Acid saat ini ${age} tahun. `
     : '';
 
-  return `LIFETIME ADVANTAGE — ${ageText}Baseline BIP membandingkan ~1.200 siklus Lead Acid dengan ~3.000+ siklus Lithium-ion (>2x cycle potential). Ini memperkuat nilai investasi jangka panjang, bukan jaminan umur tahun. Nilai aktual tetap bergantung pada duty cycle, temperatur, depth of discharge, kapasitas, dan charging strategy; validasi melalui Technical Assessment DRRKOBE.`;
+  return `LIFETIME ADVANTAGE - ${ageText}Baseline BIP: ~1.200 siklus Lead Acid vs ~3.000+ siklus Lithium-ion (>2x cycle potential). Nilai aktual tetap bergantung pada duty cycle dan kondisi site; validasi melalui Technical Assessment DRRKOBE.`;
 }
 
 function sanitizeOperationalChargerFaultCopy(text: string): string {
@@ -69,6 +81,21 @@ function sanitizeOperationalChargerFaultCopy(text: string): string {
     .replace(/uji charger dan kapasitas battery/gi, 'verifikasi kapasitas battery dan charging window')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+function operationalReplacement(
+  instance: jsPDF,
+  page: number,
+  original: string | string[],
+  text: string,
+): string | string[] {
+  if (!Array.isArray(original) && text.length < 80) return text;
+
+  if (page === 3) return wrappedText(instance, text, 92, 7);
+  if (page === 4) return wrappedText(instance, text, 128, 4);
+  if (page === 5) return wrappedText(instance, text, 146, 4);
+
+  return wrappedText(instance, text, 146, 6);
 }
 
 function transformPositioningText(instance: jsPDF, input: string | string[]): string | string[] {
@@ -91,10 +118,12 @@ function transformPositioningText(instance: jsPDF, input: string | string[]): st
 
   // Halaman diagnosis/operasional tidak mendiagnosis fault charger. Charger hanya
   // kembali muncul pada halaman evaluasi sebagai compatibility item Technical Assessment.
+  // Bila copy berubah, wrap ulang karena input dari guard sebelumnya dapat berupa array
+  // yang sudah disesuaikan dengan lebar layout.
   if (page <= 5) {
     if (/^Gangguan pada charger:/i.test(joined)) return '';
     const sanitized = sanitizeOperationalChargerFaultCopy(joined);
-    if (sanitized !== joined) return sanitized;
+    if (sanitized !== joined) return operationalReplacement(instance, page, input, sanitized);
   }
 
   if (page === 6) {
@@ -102,19 +131,20 @@ function transformPositioningText(instance: jsPDF, input: string | string[]): st
       return 'Lifetime advantage';
     }
     if (joined === 'Sekitar 1.200 siklus' || joined === 'Dipengaruhi usia & pemakaian') {
-      return lifetimeLeadText(state.batteryAgeYears);
+      return wrappedText(instance, lifetimeLeadText(state.batteryAgeYears), 47, 4);
     }
     if (joined === 'Sekitar 3.000+ siklus' || joined === 'BMS bantu kelola charging') {
-      return 'Baseline BIP ~3.000+ siklus; >2x cycle potential';
+      return wrappedText(instance, 'Baseline BIP ~3.000+ siklus; >2x cycle potential', 50, 4);
     }
     if (joined.startsWith('Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan.')) {
-      return lifetimeNarrative(state.batteryAgeYears);
+      return wrappedText(instance, lifetimeNarrative(state.batteryAgeYears), 138, 5);
     }
   }
 
   if (page === 7) {
     if (joined.startsWith('Business case ini menghubungkan biaya Lead Acid')) {
-      return 'Business case ini adalah dasar awal untuk Technical Assessment, bukan quotation. Nilai investasi final baru dibahas setelah kapasitas, charging strategy, BMS, konektor, dimensi battery, temperatur, duty cycle, dan kompatibilitas charger tervalidasi.';
+      const replacement = 'Business case ini adalah dasar awal untuk Technical Assessment, bukan quotation. Nilai investasi final baru dibahas setelah kapasitas, charging strategy, BMS, konektor, dimensi battery, temperatur, duty cycle, dan kompatibilitas charger tervalidasi.';
+      return wrappedText(instance, replacement, 138, 5);
     }
   }
 
@@ -124,22 +154,26 @@ function transformPositioningText(instance: jsPDF, input: string | string[]): st
       || joined === 'Lanjutkan Evaluasi Teknis Lithium-ion'
       || joined === 'Lanjutkan Evaluasi Lithium-ion'
     ) {
-      return 'Technical Assessment Lithium-ion';
+      return wrappedText(instance, 'Technical Assessment Lithium-ion', 150, 2);
     }
 
     if (joined.startsWith('Lanjutkan ke pemeriksaan teknis lapangan untuk menentukan apakah Lead Acid')) {
-      return 'Assessment awal menunjukkan alasan operasional untuk mengevaluasi Lithium-ion. Keputusan investasi dan harga final belum ditentukan pada tahap ini. DRRKOBE akan memvalidasi kapasitas, charging strategy, BMS, konektor, dimensi battery, temperatur, duty cycle, dan kompatibilitas charger terlebih dahulu.';
+      const replacement = 'Assessment awal menunjukkan alasan operasional untuk mengevaluasi Lithium-ion. Harga final belum ditentukan pada tahap ini. DRRKOBE memvalidasi kapasitas, charging strategy, BMS, konektor, dimensi battery, temperatur, duty cycle, dan kompatibilitas charger terlebih dahulu.';
+      return wrappedText(instance, replacement, 150, 4);
     }
 
     if (joined.startsWith('Data assessment memberi dasar untuk melanjutkan evaluasi teknis Lithium-ion.')) {
-      return 'Assessment awal memberi dasar untuk melanjutkan Technical Assessment Lithium-ion. Keputusan investasi dan harga final belum ditentukan pada tahap ini. Validasi kapasitas, charging strategy, BMS, konektor, dimensi battery, temperatur, duty cycle, dan kompatibilitas charger dilakukan sebelum proposal komersial.';
+      const replacement = 'Assessment awal memberi dasar untuk Technical Assessment Lithium-ion. Harga final belum ditentukan pada tahap ini. Validasi kapasitas, charging strategy, BMS, konektor, dimensi battery, temperatur, duty cycle, dan kompatibilitas charger dilakukan sebelum proposal komersial.';
+      return wrappedText(instance, replacement, 150, 4);
     }
 
     if (
       joined.startsWith('Jadwalkan pemeriksaan teknis bersama DRRKOBE')
       || joined.startsWith('Jadwalkan technical assessment DRRKOBE')
+      || joined.startsWith('Jadwalkan Technical Assessment DRRKOBE')
     ) {
-      return 'Jadwalkan Technical Assessment DRRKOBE. Proposal teknis dan penawaran harga final disusun setelah kompatibilitas unit dan kebutuhan site tervalidasi.';
+      const replacement = 'Jadwalkan Technical Assessment DRRKOBE. Proposal teknis dan harga final disusun setelah kompatibilitas unit dan kebutuhan site tervalidasi.';
+      return wrappedText(instance, replacement, 148, 3);
     }
   }
 
