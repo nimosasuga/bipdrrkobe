@@ -15,7 +15,8 @@ const layout = read('app/layout.tsx');
 const tracker = read('components/diagnosis-funnel-tracker.tsx');
 
 test('diagnosis route uses the native seven-step implementation', () => {
-  assert.match(route, /export \{ default \} from '\.\/seven-step-page';/);
+  assert.match(route, /import SevenStepDiagnosisPage from '\.\/seven-step-page';/);
+  assert.match(route, /return <SevenStepDiagnosisPage \/>/);
   assert.match(flow, /const TOTAL_STEPS = 7;/);
   assert.match(flow, /Array\.from\(\{ length: TOTAL_STEPS \}/);
   assert.doesNotMatch(flow, /STEP \d+ \/ 9/);
