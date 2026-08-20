@@ -11,6 +11,8 @@ const bounds = read('components/pdf-final-bounds-guard.tsx');
 const buildGuard = read('components/build-revision-guard.tsx');
 const rootLayout = read('app/layout.tsx');
 const revisionRoute = read('app/api/build-revision/route.ts');
+const revisionReader = read('lib/server-build-revision.ts');
+const dockerfile = read('Dockerfile');
 const consultant = read('components/pdf-consultant-positioning.tsx');
 
 test('final PDF bounds guard is installed as the innermost jsPDF text wrapper', () => {
@@ -28,23 +30,38 @@ test('known fixed-height PDF regions have explicit line caps', () => {
   assert.match(bounds, /page === 8.*return 3/);
 });
 
-test('generated PDFs carry a renderer revision for forensic verification', () => {
-  assert.match(bounds, /PDF_RENDERER_REVISION/);
-  assert.match(bounds, /creator: `DRRKOBE BIP \$\{PDF_RENDERER_REVISION\}`/);
-  assert.match(bounds, /subject: `DRRKOBE BIP PDF renderer \$\{PDF_RENDERER_REVISION\}`/);
+test('generated PDFs carry the active Docker renderer revision for forensic verification', () => {
+  assert.match(bounds, /activeRendererRevision/);
+  assert.match(bounds, /creator: `DRRKOBE BIP \$\{activeRendererRevision\}`/);
+  assert.match(bounds, /subject: `DRRKOBE BIP PDF renderer \$\{activeRendererRevision\}`/);
+  assert.match(rootLayout, /<PdfFinalBoundsGuard revision=\{buildRevision\} \/>/);
+});
+
+test('each frontend Docker build creates and preserves a unique revision file', () => {
+  assert.match(dockerfile, /date -u \+%Y%m%dT%H%M%SZ/);
+  assert.match(dockerfile, /\/proc\/sys\/kernel\/random\/uuid/);
+  assert.match(dockerfile, /> \/app\/build-revision\.txt/);
+  assert.match(dockerfile, /COPY --from=builder --chown=nextjs:nodejs \/app\/build-revision\.txt \.\/build-revision\.txt/);
+  assert.match(revisionReader, /readFileSync\(path\.join\(process\.cwd\(\), REVISION_FILE\)/);
 });
 
 test('stale browser tabs detect a newer deployed frontend and force a reload', () => {
+  assert.match(buildGuard, /initialRevision/);
+  assert.match(buildGuard, /const loadedRevision = initialRevision/);
   assert.match(buildGuard, /\/api\/build-revision\?t=\$\{Date\.now\(\)\}/);
   assert.match(buildGuard, /cache: 'no-store'/);
-  assert.match(buildGuard, /serverRevision === BUILD_REVISION/);
+  assert.match(buildGuard, /serverRevision === loadedRevision/);
   assert.match(buildGuard, /window\.location\.replace/);
+  assert.match(revisionRoute, /getBuildRevision\(\)/);
   assert.match(revisionRoute, /dynamic = 'force-dynamic'/);
   assert.match(revisionRoute, /no-store, no-cache, must-revalidate/);
 });
 
-test('root layout loads final bounds protection before the existing PDF text safety layer', () => {
-  const boundsIndex = rootLayout.indexOf('<PdfFinalBoundsGuard />');
+test('root layout injects one server revision into both stale-tab and PDF guards', () => {
+  assert.match(rootLayout, /const buildRevision = getBuildRevision\(\)/);
+  assert.match(rootLayout, /<BuildRevisionGuard initialRevision=\{buildRevision\} \/>/);
+  assert.match(rootLayout, /<PdfFinalBoundsGuard revision=\{buildRevision\} \/>/);
+  const boundsIndex = rootLayout.indexOf('<PdfFinalBoundsGuard');
   const safetyIndex = rootLayout.indexOf('<PdfTextSafety />');
   assert.ok(boundsIndex >= 0);
   assert.ok(safetyIndex > boundsIndex);
