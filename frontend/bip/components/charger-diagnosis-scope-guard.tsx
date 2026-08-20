@@ -9,6 +9,10 @@ const TEXT_REPLACEMENTS: Record<string, string> = {
   'Pengisian Battery Terlalu Lama / Charger Bermasalah': 'Pengisian Battery Terlalu Lama',
   'Battery lama siap digunakan kembali atau charger menunjukkan gangguan.': 'Battery membutuhkan waktu terlalu lama hingga siap digunakan kembali.',
   'Forklift Sering Berhenti Karena Battery / Charger': 'Forklift Sering Berhenti Karena Battery / Proses Pengisian',
+  'Pemeriksaan berikutnya:': 'Technical Assessment berikutnya:',
+  'Jadwalkan pemeriksaan battery di lokasi untuk memeriksa kapasitas aktual, charger, kondisi cell, dan pola operasi.': 'Jadwalkan Technical Assessment untuk memvalidasi kapasitas aktual, kondisi cell, charging window, dan pola operasi.',
+  'Data assessment sudah tercatat. Hasil dapat diunduh sebagai Executive Decision Report atau dikirim ke tim DRRKOBE untuk melanjutkan pemeriksaan teknis.': 'Data assessment sudah tercatat. Hasil ini menjadi dasar Technical Assessment DRRKOBE sebelum proposal teknis dan penawaran harga final disusun.',
+  'Request Assessment via WhatsApp →': 'Request Technical Assessment via WhatsApp →',
 };
 
 function leaf(root: ParentNode, text: string): HTMLElement | null {
