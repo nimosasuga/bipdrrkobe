@@ -13,6 +13,7 @@ const home = read('app/page.tsx');
 const start = read('app/diagnosis/start/page.tsx');
 const layout = read('app/layout.tsx');
 const tracker = read('components/diagnosis-funnel-tracker.tsx');
+const stableDowntime = read('components/stable-step8-guard.tsx');
 
 test('diagnosis route uses the native seven-step implementation', () => {
   assert.match(route, /import SevenStepDiagnosisPage from '\.\/seven-step-page';/);
@@ -63,6 +64,14 @@ test('charging electricity remains excluded from the Rupiah input model', () => 
   assert.doesNotMatch(flow, /setChargingCostPerUnitMonth/);
   assert.match(flow, /chargingCostPerUnitMonth: 0/);
   assert.match(flow, /monthlyDowntimeCost \+ monthlyMaintenanceCost/);
+});
+
+test('stable downtime guard reads shift from the new Step 3 operation summary', () => {
+  assert.match(stableDowntime, /function selectedShiftFromDetail/);
+  assert.match(stableDowntime, /leaf\(section, 'Shift'\)/);
+  assert.match(stableDowntime, /summaryValue\.match\(\/\(\\d\+\)\\s\*shift\/i\)/);
+  assert.match(stableDowntime, /captureStableBaselineFromDetailStep\(\)/);
+  assert.match(stableDowntime, /chargingCostPerUnitMonth: 0/);
 });
 
 test('homepage, start page, footer, and analytics agree on seven-step journey', () => {
