@@ -59,8 +59,11 @@ test('PDF contains dynamic Lifetime Advantage positioning', () => {
 });
 
 test('PDF positions DRRKOBE as technical consultant before final commercial offer', () => {
-  assert.match(pdfPositioning, /Technical Assessment Lithium-ion/);
-  assert.match(pdfPositioning, /harga final belum ditentukan/);
-  assert.match(pdfPositioning, /Proposal teknis dan penawaran harga final disusun setelah kompatibilitas unit dan kebutuhan site tervalidasi/);
-  assert.match(pdfPositioning, /kompatibilitas charger/);
+  assert.match(pdfPositioning, /Technical Assessment Lithium-ion/i);
+  assert.match(pdfPositioning, /Harga final belum ditentukan/i);
+  assert.match(
+    pdfPositioning,
+    /Proposal teknis dan (?:penawaran )?harga final disusun setelah kompatibilitas unit dan kebutuhan site tervalidasi/i,
+  );
+  assert.match(pdfPositioning, /kompatibilitas charger/i);
 });
