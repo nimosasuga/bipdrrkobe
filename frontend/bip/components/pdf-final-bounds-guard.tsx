@@ -51,6 +51,23 @@ function maxLinesFor(page: number, y: number): number {
   return 12;
 }
 
+function sanitizeNonDiagnosticChargerCopy(value: string, page: number): string {
+  if (page > 5) return value;
+
+  return value
+    .replace(/kapasitas battery,\s*kondisi charger,\s*dan charging window/gi, 'kapasitas battery dan charging window')
+    .replace(/kapasitas battery dan charger diverifikasi/gi, 'kapasitas battery dan charging window diverifikasi')
+    .replace(/frekuensi waktu henti terkait baterai atau charger/gi, 'frekuensi waktu henti terkait baterai / proses pengisian')
+    .replace(/(?:battery|baterai)\s*(?:\/|atau)\s*charger/gi, 'baterai / proses pengisian')
+    .replace(/penyebab battery,\s*charger,\s*dan unit/gi, 'penyebab battery, proses pengisian, dan unit')
+    .replace(/uji kapasitas battery dan charger/gi, 'uji kapasitas battery dan charging window')
+    .replace(/uji charger dan kapasitas battery/gi, 'verifikasi kapasitas battery dan charging window')
+    .replace(/charger\s+(bermasalah|error|mengalami gangguan|failure|fault|issue|problem)/gi, 'charging window belum tervalidasi')
+    .replace(/(gangguan|error|failure|fault)\s+(pada\s+)?charger/gi, 'charging window yang belum tervalidasi')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function ellipsize(instance: jsPDF, value: string, width: number): string {
   const suffix = '...';
   let text = value.trim();
@@ -69,6 +86,7 @@ function enforceBounds(
   const y = Number(args[1]);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return input;
 
+  const page = currentPage(instance);
   const options = (args[2] && typeof args[2] === 'object' ? args[2] : {}) as TextOptions;
   const width = safeWidthFor(x, options.align);
   const sourceLines = Array.isArray(input) ? input.map(String) : [String(input)];
@@ -76,7 +94,10 @@ function enforceBounds(
   let changed = false;
 
   for (const source of sourceLines) {
-    const line = source.replace(/\s+/g, ' ').trim();
+    const sanitized = sanitizeNonDiagnosticChargerCopy(source, page);
+    if (sanitized !== source) changed = true;
+
+    const line = sanitized.replace(/\s+/g, ' ').trim();
     if (!line) {
       wrapped.push('');
       continue;
@@ -93,7 +114,7 @@ function enforceBounds(
     wrapped.push(...pieces);
   }
 
-  const maxLines = maxLinesFor(currentPage(instance), y);
+  const maxLines = maxLinesFor(page, y);
   if (wrapped.length > maxLines) {
     changed = true;
     const limited = wrapped.slice(0, maxLines);
