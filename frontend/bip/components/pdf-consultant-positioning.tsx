@@ -62,8 +62,8 @@ function sanitizeOperationalChargerFaultCopy(text: string): string {
     .replace(/kapasitas battery, kondisi charger, dan charging window/gi, 'kapasitas battery dan charging window')
     .replace(/indikasi gangguan siklus pengisian atau performa charger/gi, 'charging window perlu diverifikasi terhadap kebutuhan operasi')
     .replace(/gangguan pada charger\s*:\s*[^.,;]*/gi, '')
-    .replace(/charger\s+(bermasalah|error|mengalami gangguan)/gi, 'charging window belum tervalidasi')
-    .replace(/(gangguan|error)\s+(pada\s+)?charger/gi, 'charging window yang belum tervalidasi')
+    .replace(/charger\s+(bermasalah|error|mengalami gangguan|failure|fault|issue|problem)/gi, 'charging window belum tervalidasi')
+    .replace(/(gangguan|error|failure|fault)\s+(pada\s+)?charger/gi, 'charging window yang belum tervalidasi')
     .replace(/performa charger/gi, 'charging window')
     .replace(/verifikasi charger/gi, 'verifikasi charging window')
     .replace(/uji charger dan kapasitas battery/gi, 'verifikasi kapasitas battery dan charging window')
@@ -105,7 +105,7 @@ function transformPositioningText(instance: jsPDF, input: string | string[]): st
       return lifetimeLeadText(state.batteryAgeYears);
     }
     if (joined === 'Sekitar 3.000+ siklus' || joined === 'BMS bantu kelola charging') {
-      return 'Baseline BIP ~3.000+ siklus; >2x cycle potential*';
+      return 'Baseline BIP ~3.000+ siklus; >2x cycle potential';
     }
     if (joined.startsWith('Lithium-ion tidak otomatis menjadi pilihan terbaik untuk setiap perusahaan.')) {
       return lifetimeNarrative(state.batteryAgeYears);
