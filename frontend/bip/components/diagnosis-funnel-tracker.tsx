@@ -15,9 +15,7 @@ export default function DiagnosisFunnelTracker() {
 
   useEffect(() => {
     captureAdsAttribution();
-    void trackFunnelEvent('bip_visited', {
-      metadata: { path: pathname },
-    });
+    void trackFunnelEvent('bip_visited', { metadata: { path: pathname } });
 
     if (pathname !== DIAGNOSIS_PATH) return;
 
@@ -25,7 +23,7 @@ export default function DiagnosisFunnelTracker() {
     let currentLeadId: string | null = null;
 
     void trackFunnelEvent('diagnosis_started', {
-      metadata: { path: DIAGNOSIS_PATH },
+      metadata: { path: DIAGNOSIS_PATH, flow_version: '7-step' },
     });
 
     const handleModelChange = (event: Event) => {
@@ -36,7 +34,7 @@ export default function DiagnosisFunnelTracker() {
       if (selects[1] !== target) return;
 
       void trackFunnelEvent('model_selected', {
-        metadata: { model_id: target.value },
+        metadata: { model_id: target.value, visible_step: 1, flow_version: '7-step' },
       });
     };
 
@@ -52,65 +50,54 @@ export default function DiagnosisFunnelTracker() {
         currentLeadId = null;
         resetFunnelSession();
         window.setTimeout(() => {
-          void trackFunnelEvent('bip_visited', {
-            metadata: { path: DIAGNOSIS_PATH, restarted: true },
-          });
-          void trackFunnelEvent('diagnosis_started', {
-            metadata: { path: DIAGNOSIS_PATH, restarted: true },
-          });
+          void trackFunnelEvent('bip_visited', { metadata: { path: DIAGNOSIS_PATH, restarted: true } });
+          void trackFunnelEvent('diagnosis_started', { metadata: { path: DIAGNOSIS_PATH, restarted: true, flow_version: '7-step' } });
         }, 0);
         return;
       }
 
-      if (
-        currentDiagnosisId &&
-        button?.textContent?.includes('Download Executive Report PDF')
-      ) {
+      if (currentDiagnosisId && button?.textContent?.includes('Download Executive Report PDF')) {
         void trackFunnelEvent('report_downloaded', {
           diagnosisId: currentDiagnosisId,
           leadId: currentLeadId,
-          metadata: { format: 'pdf' },
+          metadata: { format: 'pdf', flow_version: '7-step' },
         });
         return;
       }
 
-      if (
-        currentDiagnosisId &&
-        link &&
-        (link.href.startsWith('https://wa.me/') ||
-          link.textContent?.includes('Request Assessment via WhatsApp'))
-      ) {
+      if (currentDiagnosisId && link && link.href.startsWith('https://wa.me/')) {
         void trackFunnelEvent('assessment_clicked', {
           diagnosisId: currentDiagnosisId,
           leadId: currentLeadId,
-          metadata: { channel: 'whatsapp' },
+          metadata: { channel: 'whatsapp', visible_step: 7, flow_version: '7-step' },
         });
       }
     };
 
     const detectViewedSteps = () => {
       if (!currentDiagnosisId) return;
-
       const content = document.querySelector('main')?.textContent ?? '';
 
-      if (content.includes('STEP 5 / 9')) {
+      // Event keys are retained for backend/dashboard compatibility. Metadata records
+      // the native seven-step position so historical funnels remain comparable.
+      if (content.includes('STEP 4 / 7')) {
         void trackFunnelEvent('step_5_viewed', {
           diagnosisId: currentDiagnosisId,
-          metadata: { step: 5 },
+          metadata: { visible_step: 4, stage: 'ai_diagnosis_result', flow_version: '7-step' },
         });
       }
 
-      if (content.includes('STEP 7 / 9')) {
+      if (content.includes('STEP 5 / 7')) {
         void trackFunnelEvent('step_7_viewed', {
           diagnosisId: currentDiagnosisId,
-          metadata: { step: 7 },
+          metadata: { visible_step: 5, stage: 'technology_comparison', flow_version: '7-step' },
         });
       }
 
-      if (content.includes('STEP 8 / 9')) {
+      if (content.includes('STEP 6 / 7')) {
         void trackFunnelEvent('step_8_viewed', {
           diagnosisId: currentDiagnosisId,
-          metadata: { step: 8 },
+          metadata: { visible_step: 6, stage: 'business_impact', flow_version: '7-step' },
         });
       }
     };
@@ -132,15 +119,15 @@ export default function DiagnosisFunnelTracker() {
         void response.clone().json()
           .then((payload) => {
             if (!payload?.diagnosis_id) return;
-
             currentDiagnosisId = payload.diagnosis_id;
             currentLeadId = null;
-
             return trackFunnelEvent('diagnosis_completed', {
               diagnosisId: payload.diagnosis_id,
               metadata: {
                 health_score: payload.health_score ?? null,
                 category: payload.category ?? null,
+                visible_step: 4,
+                flow_version: '7-step',
               },
             });
           })
@@ -151,13 +138,11 @@ export default function DiagnosisFunnelTracker() {
         void response.clone().json()
           .then((payload) => {
             if (!payload?.success || !payload?.lead_id || !currentDiagnosisId) return;
-
             currentLeadId = payload.lead_id;
-
             return trackFunnelEvent('lead_captured', {
               diagnosisId: currentDiagnosisId,
               leadId: payload.lead_id,
-              metadata: { source: 'step_8' },
+              metadata: { source: 'step_6', visible_step: 6, flow_version: '7-step' },
             });
           })
           .catch(() => undefined);
@@ -167,7 +152,6 @@ export default function DiagnosisFunnelTracker() {
     };
 
     const observer = new MutationObserver(detectViewedSteps);
-
     window.fetch = wrappedFetch;
     document.addEventListener('change', handleModelChange);
     document.addEventListener('click', handleDocumentClick);
